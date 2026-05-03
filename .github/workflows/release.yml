@@ -67,17 +67,17 @@ jobs:
             target/
           key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('Cargo.lock') }}
 
-      - name: Build train_think binary
+      - name: Build train_generic binary
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: cargo build --release --bin train_think --target ${{ matrix.target }}
+        run: cargo build --release --bin train_generic --target ${{ matrix.target }}
 
       - name: Package binary
         shell: bash
         run: |
           TAG=${GITHUB_REF_NAME}
-          BIN_NAME="train_think-${TAG}-${{ matrix.target }}${{ matrix.binary_suffix }}"
-          cp target/${{ matrix.target }}/release/train_think${{ matrix.binary_suffix }} "${BIN_NAME}"
+          BIN_NAME="train_generic-${TAG}-${{ matrix.target }}${{ matrix.binary_suffix }}"
+          cp target/${{ matrix.target }}/release/train_generic${{ matrix.binary_suffix }} "${BIN_NAME}"
           echo "BIN_NAME=${BIN_NAME}" >> $GITHUB_ENV
 
       - name: Upload binary artifact

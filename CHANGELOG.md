@@ -26,9 +26,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 - **Cached Mamba layer**: `forward_with_cache` and `backward` for a single SSM layer (`layer.rs`)
 - **Residual stack step**: freeze-aware multi-layer supervised step (`stack.rs`)
 - **ExperimentalTrainer**: expansion/freeze/checkpoint orchestration with FF-cycle support (`trainer.rs`)
-- **ThinkTrainer**: full think-training with persistent AdamW state, prototype updates, and resume-safe bincode checkpoints (`think_trainer.rs`)
-- **train_think binary**: CLI trainer with token-file input, JSONL metrics, and periodic checkpointing
-- **think_parity binary**: deterministic resume equivalence probe
+- **GenericTrainer**: full training with persistent AdamW state, prototype updates, and resume-safe bincode checkpoints (`generic_trainer.rs`)
+- **train_generic binary**: CLI trainer with token-file input, JSONL metrics, and periodic checkpointing
+- **trainer_parity binary**: deterministic resume equivalence probe
 - **parity_lab binary**: configurable expansion/freeze harness
 - **CI workflow**: lint, test, build on push/PR
 - **Release workflow**: multi-arch binary build, GitHub Release, optional crates.io publish

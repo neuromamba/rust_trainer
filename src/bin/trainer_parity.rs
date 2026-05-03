@@ -1,7 +1,7 @@
-use rust_trainer_lab::think_trainer::{
-    default_think_config, make_batch_from_tokens, is_frozen_unchanged, mean_layer_norm, ThinkTrainer,
+use rust_trainer::generic_trainer::{
+    default_trainer_config, make_batch_from_tokens, is_frozen_unchanged, mean_layer_norm, GenericTrainer,
 };
-use rust_trainer_lab::{ExpansionPlacement, FreezeSelection, LayerSpec};
+use rust_trainer::{ExpansionPlacement, FreezeSelection, LayerSpec};
 use serde_json::json;
 
 fn main() {
@@ -10,7 +10,7 @@ fn main() {
         d_state: 16,
         d_conv: 4,
     };
-    let cfg = default_think_config(
+    let cfg = default_trainer_config(
         64,
         spec,
         6,
@@ -20,7 +20,7 @@ fn main() {
         1e-4,
     );
 
-    let mut a = ThinkTrainer::new_random(cfg, 2, 2026);
+    let mut a = GenericTrainer::new_random(cfg, 2, 2026);
     let tokens = (0..1024).map(|v| (v % 64) as i64).collect::<Vec<_>>();
     let before = a.layer_l2_norms();
     let (ids1, tgt1) = make_batch_from_tokens(&tokens, 0, 2, 8);
@@ -28,9 +28,9 @@ fn main() {
     let mid = a.layer_l2_norms();
     let frozen_ok = is_frozen_unchanged(&before, &mid, &a.frozen_layer_indices, 1e-8);
 
-    let ckpt = std::env::temp_dir().join("think_parity_roundtrip.bincode");
+    let ckpt = std::env::temp_dir().join("trainer_parity_roundtrip.bincode");
     a.save_checkpoint(&ckpt).unwrap();
-    let mut b = ThinkTrainer::load_checkpoint(&ckpt).unwrap();
+    let mut b = GenericTrainer::load_checkpoint(&ckpt).unwrap();
 
     let (ids2, tgt2) = make_batch_from_tokens(&tokens, 16, 2, 8);
     let sa = a.train_step(&ids2, &tgt2);

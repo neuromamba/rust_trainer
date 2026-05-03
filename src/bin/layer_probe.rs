@@ -1,6 +1,6 @@
 use ndarray::Array3;
-use rust_trainer_lab::layer::{backward, forward_with_cache};
-use rust_trainer_lab::trainer::{LayerSpec, MambaLayerParams};
+use rust_trainer::layer::{backward, forward_with_cache};
+use rust_trainer::trainer::{LayerSpec, MambaLayerParams};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::json;

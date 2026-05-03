@@ -1,7 +1,7 @@
-# rust_trainer_lab
+# RUST Trainer
 
-[![CI](https://github.com/YOUR_ORG/rust_trainer_lab/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_ORG/rust_trainer_lab/actions/workflows/ci.yml)
-[![Crates.io](https://img.shields.io/crates/v/rust_trainer_lab.svg)](https://crates.io/crates/rust_trainer_lab)
+[![CI](https://img.shields.io/badge/CI-ready-brightgreen)](.github/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/rust_trainer.svg)](https://crates.io/crates/rust_trainer)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 A reusable, CPU-first Rust training package for sequence models.
@@ -44,7 +44,7 @@ No Python runtime is required.
 ```
 src/
   lib.rs            - crate root and public exports
-  think_trainer.rs  - full trainer state, train step, checkpoint/resume
+  generic_trainer.rs  - full trainer state, train step, checkpoint/resume
   trainer.rs        - parameter and expansion/freezing config types
   optim.rs          - AdamW optimizer primitives
   nn.rs             - layer norm and output-loss helpers
@@ -52,8 +52,8 @@ src/
   layer.rs          - cached layer forward/backward helpers
   stack.rs          - stack-level supervised step helpers
 src/bin/
-  train_think.rs    - main CLI trainer
-  think_parity.rs   - deterministic parity/resume checker
+  train_generic.rs    - main CLI trainer
+  trainer_parity.rs   - deterministic parity/resume checker
   parity_lab.rs     - expansion/freeze behavior harness
   *_probe.rs        - low-level probes used for validation
 ```
@@ -63,15 +63,15 @@ src/bin/
 ## Quick start
 
 ```bash
-git clone https://github.com/YOUR_ORG/rust_trainer_lab
-cd rust_trainer_lab
+git clone https://github.com/YOUR_ORG/YOUR_REPO
+cd YOUR_REPO
 cargo test
 ```
 
 Run a short smoke training job:
 
 ```bash
-cargo run --release --bin train_think -- \
+cargo run --release --bin train_generic -- \
   --steps 200 \
   --batch-size 4 \
   --seq-len 32 \
@@ -81,7 +81,7 @@ cargo run --release --bin train_think -- \
 Run deterministic resume parity check:
 
 ```bash
-cargo run --release --bin think_parity
+cargo run --release --bin trainer_parity
 ```
 
 ---
@@ -91,7 +91,7 @@ cargo run --release --bin think_parity
 The default trainer accepts a whitespace-separated integer token file.
 
 ```bash
-cargo run --release --bin train_think -- \
+cargo run --release --bin train_generic -- \
   --token-file /path/to/your_tokens.txt \
   --out-dir runs/experiment_v1 \
   --steps 50000 \
@@ -109,7 +109,7 @@ cargo run --release --bin train_think -- \
 Resume training:
 
 ```bash
-cargo run --release --bin train_think -- \
+cargo run --release --bin train_generic -- \
   --resume runs/experiment_v1/latest.bincode \
   --out-dir runs/experiment_v1 \
   --steps 20000
@@ -117,11 +117,11 @@ cargo run --release --bin train_think -- \
 
 ---
 
-## CLI reference (train_think)
+## CLI reference
 
 | Flag | Default | Description |
 |---|---|---|
-| `--out-dir PATH` | `runs/RUST_THINK` | Output directory for checkpoints and metrics |
+| `--out-dir PATH` | `runs/` | Output directory for checkpoints and metrics |
 | `--steps N` | `5000` | Number of train steps |
 | `--save-every N` | `200` | Checkpoint interval |
 | `--log-every N` | `20` | Metric logging interval |
@@ -165,7 +165,7 @@ Add dependency:
 
 ```toml
 [dependencies]
-YOUR_CRATE_NAME = "0.1"
+rust_trainer = "0.1"
 ```
 
 Use the package name from your own `Cargo.toml`.
@@ -173,13 +173,13 @@ Use the package name from your own `Cargo.toml`.
 Minimal integration example:
 
 ```rust
-use YOUR_CRATE_NAME::think_trainer::{
-    ThinkTrainer, default_think_config, make_batch_from_tokens,
+use rust_trainer::generic_trainer::{
+    GenericTrainer, default_trainer_config, make_batch_from_tokens,
 };
-use YOUR_CRATE_NAME::{ExpansionPlacement, FreezeSelection, LayerSpec};
+use rust_trainer::{ExpansionPlacement, FreezeSelection, LayerSpec};
 
 let spec = LayerSpec { d_model: 512, d_state: 16, d_conv: 4 };
-let cfg = default_think_config(
+let cfg = default_trainer_config(
     8192,
     spec,
     6,
@@ -189,7 +189,7 @@ let cfg = default_think_config(
     1e-4,
 );
 
-let mut trainer = ThinkTrainer::new_random(cfg, 2, 42);
+let mut trainer = GenericTrainer::new_random(cfg, 2, 42);
 let tokens: Vec<i64> = (0..8192).collect();
 let (ids, targets) = make_batch_from_tokens(&tokens, 0, 8, 64);
 let stats = trainer.train_step(&ids, &targets);
@@ -205,8 +205,8 @@ You can adapt this package to your own model by replacing or extending:
 
 1. layer forward/backward path in `src/layer.rs`
 2. output loss/head logic in `src/nn.rs`
-3. trainer state wiring in `src/think_trainer.rs`
-4. data loading logic in `src/bin/train_think.rs`
+3. trainer state wiring in `src/generic_trainer.rs`
+4. data loading logic in `src/bin/train_generic.rs`
 
 This lets you keep checkpointing, optimizer state, logging, and run controls while swapping in your model-specific math.
 

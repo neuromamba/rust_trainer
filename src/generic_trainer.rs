@@ -14,7 +14,7 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThinkTrainerConfig {
+pub struct GenericTrainerConfig {
     pub vocab_size: usize,
     pub layer_spec: LayerSpec,
     pub expansion: ExpansionConfig,
@@ -66,8 +66,8 @@ pub struct ThinkOptimizerState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThinkTrainer {
-    pub cfg: ThinkTrainerConfig,
+pub struct GenericTrainer {
+    pub cfg: GenericTrainerConfig,
     pub params: TrainerParams,
     pub prototypes: Array2<f32>,
     pub optimizer: ThinkOptimizerState,
@@ -84,8 +84,8 @@ pub struct StepStats {
     pub top_grad_norm: f32,
 }
 
-impl ThinkTrainer {
-    pub fn new_random(cfg: ThinkTrainerConfig, base_layers: usize, seed: u64) -> Self {
+impl GenericTrainer {
+    pub fn new_random(cfg: GenericTrainerConfig, base_layers: usize, seed: u64) -> Self {
         let mut base = TrainerParams::random(cfg.vocab_size, cfg.layer_spec, base_layers, seed);
         expand_layers_in_place(
             &mut base.layers,
@@ -342,7 +342,7 @@ impl ThinkTrainer {
     }
 }
 
-pub fn default_think_config(
+pub fn default_trainer_config(
     vocab_size: usize,
     layer_spec: LayerSpec,
     target_layers: usize,
@@ -350,8 +350,8 @@ pub fn default_think_config(
     freeze: FreezeSelection,
     freeze_embedding: bool,
     lr: f32,
-) -> ThinkTrainerConfig {
-    ThinkTrainerConfig {
+) -> GenericTrainerConfig {
+    GenericTrainerConfig {
         vocab_size,
         layer_spec,
         expansion: ExpansionConfig {
@@ -471,7 +471,7 @@ mod tests {
             d_state: 8,
             d_conv: 4,
         };
-        let cfg = default_think_config(
+        let cfg = default_trainer_config(
             32,
             spec,
             6,
@@ -480,14 +480,14 @@ mod tests {
             false,
             1e-3,
         );
-        let mut trainer_a = ThinkTrainer::new_random(cfg, 2, 123);
+        let mut trainer_a = GenericTrainer::new_random(cfg, 2, 123);
         let tokens = (0..256).map(|v| (v % 32) as i64).collect::<Vec<_>>();
         let (ids1, tgt1) = make_batch_from_tokens(&tokens, 0, 2, 6);
         let _ = trainer_a.train_step(&ids1, &tgt1);
 
-        let ckpt = std::env::temp_dir().join("think_trainer_resume_det.bincode");
+        let ckpt = std::env::temp_dir().join("generic_trainer_resume_det.bincode");
         trainer_a.save_checkpoint(&ckpt).unwrap();
-        let mut trainer_b = ThinkTrainer::load_checkpoint(&ckpt).unwrap();
+        let mut trainer_b = GenericTrainer::load_checkpoint(&ckpt).unwrap();
 
         let (ids2, tgt2) = make_batch_from_tokens(&tokens, 12, 2, 6);
         let a = trainer_a.train_step(&ids2, &tgt2);

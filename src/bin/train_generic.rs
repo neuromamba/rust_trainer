@@ -1,8 +1,8 @@
-use rust_trainer_lab::think_trainer::{
-    default_think_config, make_batch_from_tokens, max_token_plus_one, parse_freeze, parse_placement,
-    tokenize_int_file, ThinkTrainer,
+use rust_trainer::generic_trainer::{
+    default_trainer_config, make_batch_from_tokens, max_token_plus_one, parse_freeze, parse_placement,
+    tokenize_int_file, GenericTrainer,
 };
-use rust_trainer_lab::LayerSpec;
+use rust_trainer::LayerSpec;
 use serde_json::json;
 use std::env;
 use std::fs::{self, OpenOptions};
@@ -38,7 +38,7 @@ fn parse_bool(raw: &str) -> bool {
 
 fn parse_args() -> Args {
     let mut args = Args {
-        out_dir: "runs/RUST_THINK".to_string(),
+        out_dir: "runs/RUST_TRAINER".to_string(),
         steps: 5000,
         save_every: 200,
         log_every: 20,
@@ -162,7 +162,7 @@ fn main() {
 
     let mut trainer = if let Some(path) = &args.resume {
         if Path::new(path).exists() {
-            ThinkTrainer::load_checkpoint(path).expect("load checkpoint")
+            GenericTrainer::load_checkpoint(path).expect("load checkpoint")
         } else {
             panic!("resume checkpoint does not exist: {path}");
         }
@@ -172,7 +172,7 @@ fn main() {
             d_state: args.d_state,
             d_conv: args.d_conv,
         };
-        let cfg = default_think_config(
+        let cfg = default_trainer_config(
             vocab_size,
             spec,
             args.target_layers,
@@ -181,7 +181,7 @@ fn main() {
             args.freeze_embedding,
             args.lr,
         );
-        ThinkTrainer::new_random(cfg, args.base_layers, args.seed)
+        GenericTrainer::new_random(cfg, args.base_layers, args.seed)
     };
 
     let metrics_path = format!("{}/metrics.jsonl", args.out_dir);

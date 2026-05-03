@@ -4,7 +4,7 @@ pub mod nn;
 pub mod optim;
 pub mod layer;
 pub mod stack;
-pub mod think_trainer;
+pub mod generic_trainer;
 
 pub use trainer::{
     AdamWConfig, ExpansionConfig, ExpansionPlacement, ExperimentalTrainer,

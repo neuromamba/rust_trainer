@@ -1,6 +1,6 @@
 use ndarray::{Array2, Array3};
-use rust_trainer_lab::nn::{hpn_loss_and_grad_z, layer_norm_backward, layer_norm_forward};
-use rust_trainer_lab::optim::{adamw_update_2d, Adam2};
+use rust_trainer::nn::{hpn_loss_and_grad_z, layer_norm_backward, layer_norm_forward};
+use rust_trainer::optim::{adamw_update_2d, Adam2};
 use serde_json::json;
 
 fn main() {

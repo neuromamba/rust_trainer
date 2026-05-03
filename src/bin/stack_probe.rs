@@ -1,6 +1,6 @@
 use ndarray::Array2;
-use rust_trainer_lab::stack::supervised_residual_step;
-use rust_trainer_lab::trainer::{LayerSpec, MambaLayerParams, TrainerParams};
+use rust_trainer::stack::supervised_residual_step;
+use rust_trainer::trainer::{LayerSpec, MambaLayerParams, TrainerParams};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde_json::json;

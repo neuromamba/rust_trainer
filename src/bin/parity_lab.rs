@@ -1,4 +1,4 @@
-use rust_trainer_lab::{
+use rust_trainer::{
     AdamWConfig, ExpansionConfig, ExpansionPlacement, ExperimentalTrainer, ExperimentalTrainerConfig,
     FreezeSelection, LayerSpec, TrainerParams,
 };

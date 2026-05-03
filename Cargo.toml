@@ -1,20 +1,20 @@
 [package]
-name = "rust_trainer_lab"
+name = "rust_trainer"
 version = "0.1.0"
 edition = "2021"
 description = "CPU-first pure-Rust supervised trainer for Selective State Space Models with Hyperspherical Prototype Networks."
 authors = ["Contributors"]
 license = "Apache-2.0"
-repository = "https://github.com/YOUR_ORG/YOUR_REPO"
-homepage = "https://github.com/YOUR_ORG/YOUR_REPO"
-documentation = "https://docs.rs/YOUR_CRATE_NAME"
+repository = "https://github.com/npradeep357/rust_trainer"
+homepage = "https://github.com/npradeep357/rust_trainer"
+documentation = "https://docs.rs/rust_trainer"
 readme = "README.md"
 keywords = ["mamba", "ssm", "trainer", "cpu", "hpn"]
 categories = ["machine-learning", "science", "algorithms"]
 exclude = ["runs/", "target/"]
 
 [lib]
-name = "rust_trainer_lab"
+name = "rust_trainer"
 path = "src/lib.rs"
 
 [dependencies]
