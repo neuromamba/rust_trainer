@@ -1,8 +1,8 @@
-use neuromamba_trainer_lab::think_trainer::{
+use rust_trainer_lab::think_trainer::{
     default_think_config, make_batch_from_tokens, max_token_plus_one, parse_freeze, parse_placement,
     tokenize_int_file, ThinkTrainer,
 };
-use neuromamba_trainer_lab::LayerSpec;
+use rust_trainer_lab::LayerSpec;
 use serde_json::json;
 use std::env;
 use std::fs::{self, OpenOptions};

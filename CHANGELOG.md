@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `neuromamba_trainer_lab` are documented here.
+All notable changes to `rust_trainer_lab` are documented here.
 Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
@@ -33,5 +33,5 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 - **CI workflow**: lint, test, build on push/PR
 - **Release workflow**: multi-arch binary build, GitHub Release, optional crates.io publish
 
-[Unreleased]: https://github.com/YOUR_ORG/neuromamba_trainer_lab/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/YOUR_ORG/neuromamba_trainer_lab/releases/tag/v0.1.0
+[Unreleased]: https://github.com/YOUR_ORG/YOUR_REPO/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/YOUR_ORG/YOUR_REPO/releases/tag/v0.1.0

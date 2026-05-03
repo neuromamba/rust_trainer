@@ -123,20 +123,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "neuromamba_trainer_lab"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "ndarray",
- "rand",
- "rand_distr",
- "rayon",
- "serde",
- "serde_json",
- "wide",
-]
-
-[[package]]
 name = "num-complex"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -270,6 +256,20 @@ checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
+]
+
+[[package]]
+name = "rust_trainer_lab"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "ndarray",
+ "rand",
+ "rand_distr",
+ "rayon",
+ "serde",
+ "serde_json",
+ "wide",
 ]
 
 [[package]]

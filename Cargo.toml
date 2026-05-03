@@ -1,20 +1,20 @@
 [package]
-name = "neuromamba_trainer_lab"
+name = "rust_trainer_lab"
 version = "0.1.0"
 edition = "2021"
 description = "CPU-first pure-Rust supervised trainer for Selective State Space Models with Hyperspherical Prototype Networks."
-authors = ["NeuroMamba Contributors"]
+authors = ["Contributors"]
 license = "Apache-2.0"
-repository = "https://github.com/YOUR_ORG/neuromamba_trainer_lab"
-homepage = "https://github.com/YOUR_ORG/neuromamba_trainer_lab"
-documentation = "https://docs.rs/neuromamba_trainer_lab"
+repository = "https://github.com/YOUR_ORG/YOUR_REPO"
+homepage = "https://github.com/YOUR_ORG/YOUR_REPO"
+documentation = "https://docs.rs/YOUR_CRATE_NAME"
 readme = "README.md"
 keywords = ["mamba", "ssm", "trainer", "cpu", "hpn"]
 categories = ["machine-learning", "science", "algorithms"]
 exclude = ["runs/", "target/"]
 
 [lib]
-name = "neuromamba_trainer_lab"
+name = "rust_trainer_lab"
 path = "src/lib.rs"
 
 [dependencies]

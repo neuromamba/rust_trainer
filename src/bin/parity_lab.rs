@@ -1,4 +1,4 @@
-use neuromamba_trainer_lab::{
+use rust_trainer_lab::{
     AdamWConfig, ExpansionConfig, ExpansionPlacement, ExperimentalTrainer, ExperimentalTrainerConfig,
     FreezeSelection, LayerSpec, TrainerParams,
 };

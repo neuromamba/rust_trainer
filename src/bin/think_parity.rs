@@ -1,7 +1,7 @@
-use neuromamba_trainer_lab::think_trainer::{
+use rust_trainer_lab::think_trainer::{
     default_think_config, make_batch_from_tokens, is_frozen_unchanged, mean_layer_norm, ThinkTrainer,
 };
-use neuromamba_trainer_lab::{ExpansionPlacement, FreezeSelection, LayerSpec};
+use rust_trainer_lab::{ExpansionPlacement, FreezeSelection, LayerSpec};
 use serde_json::json;
 
 fn main() {

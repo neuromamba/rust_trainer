@@ -1,5 +1,5 @@
 use ndarray::{Array1, Array2, Array3};
-use neuromamba_trainer_lab::simd_ops::{
+use rust_trainer_lab::simd_ops::{
     ssm_scan_backward_scalar, ssm_scan_backward_simd, ssm_scan_forward_scalar,
 };
 use serde_json::json;
