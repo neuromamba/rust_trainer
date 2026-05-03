@@ -1,0 +1,9 @@
+/target/
+**/*.rs.bk
+# Cargo.lock is intentionally tracked in this repo.
+# This crate ships runnable binaries (train_think, etc.) so reproducible builds require it.
+runs/**
+!runs/.gitkeep
+.DS_Store
+.idea/
+.vscode/

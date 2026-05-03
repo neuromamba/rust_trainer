@@ -1,0 +1,37 @@
+# Changelog
+
+All notable changes to `neuromamba_trainer_lab` are documented here.
+Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Planned
+- Cross-framework parity check against Python/JAX trainer on shared deterministic batches
+- Streaming data pipeline: shard files, shuffle buffer, packed sequences
+- LR schedule: cosine decay with linear warmup
+- Gradient clipping
+- Generation / sampling loop (greedy, top-k, temperature)
+- PyO3 bindings for hybrid Python + Rust training orchestration
+
+---
+
+## [0.1.0] — 2026-05-03
+
+### Added
+- **SIMD SSM kernels**: forward and backward scans over state lanes using `wide::f32x8` (`simd_ops.rs`)
+- **SIMD Conv1d + SiLU**: depthwise causal convolution with SiLU activation, scalar and SIMD paths
+- **LayerNorm**: forward and backward with per-token mean/variance cache (`nn.rs`)
+- **HPN loss**: squared cosine-distance loss with gradients for both hidden state and prototype matrix (`nn.rs`)
+- **AdamW**: serializable 1D and 2D moment buffers with bias-corrected update (`optim.rs`)
+- **Cached Mamba layer**: `forward_with_cache` and `backward` for a single SSM layer (`layer.rs`)
+- **Residual stack step**: freeze-aware multi-layer supervised step (`stack.rs`)
+- **ExperimentalTrainer**: expansion/freeze/checkpoint orchestration with FF-cycle support (`trainer.rs`)
+- **ThinkTrainer**: full think-training with persistent AdamW state, prototype updates, and resume-safe bincode checkpoints (`think_trainer.rs`)
+- **train_think binary**: CLI trainer with token-file input, JSONL metrics, and periodic checkpointing
+- **think_parity binary**: deterministic resume equivalence probe
+- **parity_lab binary**: configurable expansion/freeze harness
+- **CI workflow**: lint, test, build on push/PR
+- **Release workflow**: multi-arch binary build, GitHub Release, optional crates.io publish
+
+[Unreleased]: https://github.com/YOUR_ORG/neuromamba_trainer_lab/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/YOUR_ORG/neuromamba_trainer_lab/releases/tag/v0.1.0
