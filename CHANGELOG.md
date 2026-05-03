@@ -33,5 +33,5 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 - **CI workflow**: lint, test, build on push/PR
 - **Release workflow**: multi-arch binary build, GitHub Release, optional crates.io publish
 
-[Unreleased]: https://github.com/YOUR_ORG/YOUR_REPO/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/YOUR_ORG/YOUR_REPO/releases/tag/v0.1.0
+[Unreleased]: https://github.com/npradeep357/rust_trainer/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/npradeep357/rust_trainer/releases/tag/v0.1.0

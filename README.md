@@ -65,8 +65,8 @@ src/bin/
 ## Quick start
 
 ```bash
-git clone https://github.com/YOUR_ORG/YOUR_REPO
-cd YOUR_REPO
+git clone https://github.com/npradeep357/rust_trainer
+cd rust_trainer
 cargo test
 ```
 
