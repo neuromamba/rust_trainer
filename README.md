@@ -29,27 +29,35 @@ No Python runtime is required.
 | Configurable layer expansion and freezing | ✅ |
 | Deterministic parity probe for save/load correctness | ✅ |
 | SIMD math kernels for high-throughput CPU training | ✅ |
+| Validation cadence + best-checkpoint tracking | ✅ |
+| Early stopping support | ✅ |
+| Gradient clipping controls | ✅ |
+| LR warmup + cosine decay controls | ✅ |
+| Non-finite update guardrails | ✅ |
+| Sharded streaming dataset support | ✅ |
+| Packed sequence batching on shard streams | ✅ |
+| Multi-worker sharded prefetch ingestion | ✅ |
+| Run-state resume for stream cursors | ✅ |
+| Atomic versioned checkpoints | ✅ |
+| Cross-framework parity harness (Rust vs Python/JAX) | ✅ |
 
 ---
 
 ## Production readiness status
 
-Current state: production-candidate for single-node CPU training, not yet full production-grade.
+Current state: production-candidate for single-node CPU training with production-critical ingestion and parity validation implemented.
 
 What is already robust:
 
 - deterministic resume behavior (checkpoint + optimizer state + step)
+- deterministic resume behavior for streaming shard cursors (`run_state.json`)
 - configurable expansion/freeze controls for staged training
 - validated SIMD and backward kernels with scalar parity probes
 - CI, release, and crate packaging automation
 
-What is still missing for full production operation:
+Operational note:
 
-- built-in validation/evaluation loop and early-stopping controls
-- streaming/sharded dataset pipeline (current path loads full token file into memory)
-- LR schedule + grad clipping + NaN guardrails in the main train loop
-- checkpoint format versioning and atomic checkpoint writes
-- cross-framework parity harness against Python/JAX reference on shared batches
+- cross-framework parity runner requires `jax` to be installed in the active Python environment
 
 Detailed roadmap and release milestones are tracked in [roadmap.md](roadmap.md).
 
@@ -109,6 +117,12 @@ Run deterministic resume parity check:
 cargo run --release --bin trainer_parity
 ```
 
+Run Rust vs Python/JAX parity check:
+
+```bash
+cargo run --release --bin cross_framework_parity
+```
+
 ---
 
 ## Train your own model data
@@ -163,8 +177,31 @@ cargo run --release --bin train_generic -- \
 | `--lr F` | `1e-4` | AdamW learning rate |
 | `--freeze-embedding 1` | `false` | Freeze embedding table |
 | `--token-file PATH` | none | Integer token dataset |
+| `--token-dir PATH` | none | Directory of shard files for streaming training |
+| `--val-token-file PATH` | none | Optional dedicated validation token dataset |
+| `--val-token-dir PATH` | none | Optional validation shard directory |
+| `--shard-ext EXT` | `txt` | Extension filter used with `--token-dir` / `--val-token-dir` |
+| `--shuffle-shards 1` | `true` | Shuffle shard order each epoch in streaming mode |
+| `--packed-sequences 1` | `true` | Use packed contiguous token windows in streaming mode |
+| `--prefetch-workers N` | `0` | Number of worker threads for sharded prefetch (`>1` enables multi-worker mode) |
+| `--prefetch-buffer N` | `16` | Bounded channel capacity for prefetched worker batches |
 | `--resume PATH` | none | Resume checkpoint |
 | `--vocab-size N` | auto | Override vocab size |
+| `--val-ratio F` | `0.05` | Validation split ratio when `--val-token-file` is not provided |
+| `--val-every N` | `200` | Validation cadence in train steps |
+| `--eval-batches N` | `8` | Number of validation batches per eval pass |
+| `--early-stopping-patience N` | `0` | Stop when validation does not improve for N eval windows (0 disables) |
+| `--grad-clip-norm F` | `0.0` | Global gradient clipping threshold (0 disables clipping) |
+| `--fail-on-non-finite 1` | `false` | Panic on NaN/Inf detection instead of skipping the update |
+| `--lr-warmup-steps N` | `0` | Linear warmup length before decay |
+| `--lr-min-scale F` | `0.1` | Minimum LR floor as fraction of base LR for cosine decay |
+
+### Debug + recovery artifacts
+
+- `latest.bincode`: latest atomic, versioned checkpoint (model + optimizer + step)
+- `best.bincode`: best validation checkpoint
+- `run_state.json`: resumable data-pipeline state (in-memory cursor or shard stream cursor)
+- `metrics.jsonl`: train/validation metrics stream for dashboards and debugging
 
 ### Placement values
 

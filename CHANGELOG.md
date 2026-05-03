@@ -18,6 +18,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 - Migrated checkpoint serialization calls to bincode v2 serde API.
 - Moved roadmap details from `README.md` to dedicated `roadmap.md`.
 
+### Added
+- Streaming shard data pipeline via `src/data_stream.rs` with resumable shard cursor state.
+- `train_generic` support for `--token-dir` / `--val-token-dir` with extension filtering and shard shuffling.
+- `run_state.json` persistence for deterministic resume of data pipeline cursors.
+- Atomic, versioned checkpoint envelope for `GenericTrainer` state.
+- Validation path hardening in `train_generic` with best-checkpoint tracking and early stopping.
+
 ### Planned
 - Cross-framework parity check against Python/JAX trainer on shared deterministic batches
 - Streaming data pipeline: shard files, shuffle buffer, packed sequences

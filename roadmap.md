@@ -13,6 +13,12 @@ Completed:
 - expansion and freeze policies
 - deterministic parity probe for save/load equivalence
 - SIMD kernel parity checks
+- validation loop with configurable eval cadence
+- best-checkpoint tracking and early stopping
+- gradient clipping + LR warmup/cosine scheduling controls
+- non-finite guardrails for train-step updates
+- streaming shard data loader with resumable cursor state
+- atomic versioned generic trainer checkpoints
 
 ## Phase 1: Training correctness hardening
 
@@ -83,7 +89,7 @@ Acceptance criteria:
 ## Near-term implementation order
 
 1. Cross-framework parity harness
-2. LR schedules + gradient clipping + NaN guards
-3. Streaming dataset pipeline
-4. Atomic/versioned checkpoints
-5. Validation/eval loop
+2. Packed sequence batching for shard streams
+3. Multi-worker/parallel data ingest for throughput scaling
+4. Cross-platform CI matrix expansion for runtime validation
+5. Optional PyO3 integration layer for hybrid orchestration

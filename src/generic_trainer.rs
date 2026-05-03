@@ -1,5 +1,5 @@
 use crate::layer::{backward as layer_backward, forward_with_cache, LayerForwardCache, LayerGrads};
-use crate::nn::{hpn_loss_and_grads, layer_norm_backward, layer_norm_forward};
+use crate::nn::{hpn_loss_and_grad_z, hpn_loss_and_grads, layer_norm_backward, layer_norm_forward};
 use crate::optim::{adamw_update_1d, adamw_update_2d, Adam1, Adam2};
 use crate::trainer::{
     expand_layers_in_place, resolve_freeze_indices, AdamWConfig, ExpansionConfig, ExpansionPlacement,
@@ -12,6 +12,15 @@ use rand_distr::StandardNormal;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const GENERIC_TRAINER_CKPT_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GenericTrainerCheckpoint {
+    version: u32,
+    trainer: GenericTrainer,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericTrainerConfig {
@@ -21,6 +30,8 @@ pub struct GenericTrainerConfig {
     pub freeze_selection: FreezeSelection,
     pub freeze_embedding: bool,
     pub adamw: AdamWConfig,
+    pub grad_clip_norm: Option<f32>,
+    pub fail_on_non_finite: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +93,11 @@ pub struct StepStats {
     pub embedding_grad_norm: f32,
     pub prototype_grad_norm: f32,
     pub top_grad_norm: f32,
+    pub grad_global_norm: f32,
+    pub lr: f32,
+    pub clipped: bool,
+    pub skipped_update: bool,
+    pub non_finite_detected: bool,
 }
 
 impl GenericTrainer {
@@ -124,17 +140,34 @@ impl GenericTrainer {
     }
 
     pub fn save_checkpoint<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
-        let bytes = bincode::serde::encode_to_vec(self, bincode::config::standard())
+        let payload = GenericTrainerCheckpoint {
+            version: GENERIC_TRAINER_CKPT_VERSION,
+            trainer: self.clone(),
+        };
+        let bytes = bincode::serde::encode_to_vec(payload, bincode::config::standard())
             .map_err(|err| format!("serialize failed: {err}"))?;
-        fs::write(path, bytes).map_err(|err| format!("checkpoint write failed: {err}"))
+        atomic_write_bytes(path.as_ref(), &bytes)
     }
 
     pub fn load_checkpoint<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let bytes = fs::read(path).map_err(|err| format!("checkpoint read failed: {err}"))?;
-        let (decoded, _bytes_read) =
+        if let Ok((decoded, _bytes_read)) =
+            bincode::serde::decode_from_slice::<GenericTrainerCheckpoint, _>(&bytes, bincode::config::standard())
+        {
+            if decoded.version != GENERIC_TRAINER_CKPT_VERSION {
+                return Err(format!(
+                    "unsupported checkpoint version: {}",
+                    decoded.version
+                ));
+            }
+            return Ok(decoded.trainer);
+        }
+
+        // Backward compatibility for pre-versioned checkpoints.
+        let (legacy, _bytes_read) =
             bincode::serde::decode_from_slice::<Self, _>(&bytes, bincode::config::standard())
                 .map_err(|err| format!("deserialize failed: {err}"))?;
-        Ok(decoded)
+        Ok(legacy)
     }
 
     pub fn train_step(&mut self, ids: &Array2<i64>, targets: &Array2<i64>) -> StepStats {
@@ -165,7 +198,7 @@ impl GenericTrainer {
             .into_shape_with_order((batch * seq_len, d_model))
             .expect("flatten ln output");
         let tgt_flat = targets.iter().copied().collect::<Vec<_>>();
-        let (loss, dz_flat, d_prototypes) = hpn_loss_and_grads(z_flat.view(), &tgt_flat, &self.prototypes);
+        let (loss, dz_flat, mut d_prototypes) = hpn_loss_and_grads(z_flat.view(), &tgt_flat, &self.prototypes);
         let dx_ln = dz_flat
             .into_shape_with_order((batch, seq_len, d_model))
             .expect("reshape dz");
@@ -196,6 +229,51 @@ impl GenericTrainer {
 
         let embedding_grad_norm = embedding_grads.iter().map(|v| v * v).sum::<f32>().sqrt();
         let prototype_grad_norm = d_prototypes.iter().map(|v| v * v).sum::<f32>().sqrt();
+
+        let mut grad_global_norm_sq = embedding_grads.iter().map(|v| v * v).sum::<f32>();
+        grad_global_norm_sq += d_prototypes.iter().map(|v| v * v).sum::<f32>();
+        for grads in &layer_grads {
+            grad_global_norm_sq += layer_grads_l2_sq(grads);
+        }
+        let grad_global_norm = grad_global_norm_sq.sqrt();
+
+        let non_finite_detected = !loss.is_finite()
+            || !embedding_grad_norm.is_finite()
+            || !prototype_grad_norm.is_finite()
+            || !top_grad_norm.is_finite()
+            || !grad_global_norm.is_finite();
+
+        if non_finite_detected {
+            if self.cfg.fail_on_non_finite {
+                panic!("non-finite detected during train_step");
+            }
+            return StepStats {
+                step: self.step,
+                loss,
+                embedding_grad_norm,
+                prototype_grad_norm,
+                top_grad_norm,
+                grad_global_norm,
+                lr: self.cfg.adamw.lr,
+                clipped: false,
+                skipped_update: true,
+                non_finite_detected: true,
+            };
+        }
+
+        let mut clipped = false;
+        if let Some(clip_norm) = self.cfg.grad_clip_norm {
+            if clip_norm > 0.0 && grad_global_norm > clip_norm {
+                let scale = clip_norm / grad_global_norm;
+                embedding_grads.mapv_inplace(|v| v * scale);
+                d_prototypes.mapv_inplace(|v| v * scale);
+                for grads in &mut layer_grads {
+                    scale_layer_grads(grads, scale);
+                }
+                clipped = true;
+            }
+        }
+
         self.apply_updates(&embedding_grads, &layer_grads, &d_prototypes);
 
         self.step += 1;
@@ -205,7 +283,41 @@ impl GenericTrainer {
             embedding_grad_norm,
             prototype_grad_norm,
             top_grad_norm,
+            grad_global_norm,
+            lr: self.cfg.adamw.lr,
+            clipped,
+            skipped_update: false,
+            non_finite_detected: false,
         }
+    }
+
+    pub fn eval_step(&self, ids: &Array2<i64>, targets: &Array2<i64>) -> f32 {
+        let (batch, seq_len) = (ids.shape()[0], ids.shape()[1]);
+        let d_model = self.params.embedding.shape()[1];
+
+        let mut x = Array3::<f32>::zeros((batch, seq_len, d_model));
+        for b in 0..batch {
+            for t in 0..seq_len {
+                let tok = ids[(b, t)].rem_euclid(self.params.embedding.shape()[0] as i64) as usize;
+                for d in 0..d_model {
+                    x[(b, t, d)] = self.params.embedding[(tok, d)];
+                }
+            }
+        }
+
+        let mut residual = x;
+        for layer in &self.params.layers {
+            let (h, _cache) = forward_with_cache(layer, residual.view());
+            residual = &residual + &h;
+        }
+
+        let (x_ln, _ln_cache) = layer_norm_forward(residual.view());
+        let z_flat = x_ln
+            .into_shape_with_order((batch * seq_len, d_model))
+            .expect("flatten ln output");
+        let tgt_flat = targets.iter().copied().collect::<Vec<_>>();
+        let (loss, _dz) = hpn_loss_and_grad_z(z_flat.view(), &tgt_flat, &self.prototypes);
+        loss
     }
 
     fn apply_updates(
@@ -368,7 +480,49 @@ pub fn default_trainer_config(
             lr,
             ..AdamWConfig::default()
         },
+        grad_clip_norm: None,
+        fail_on_non_finite: false,
     }
+}
+
+fn layer_grads_l2_sq(grads: &LayerGrads) -> f32 {
+    grads.a_log.iter().map(|v| v * v).sum::<f32>()
+        + grads.d_skip.iter().map(|v| v * v).sum::<f32>()
+        + grads.x_proj_w.iter().map(|v| v * v).sum::<f32>()
+        + grads.dt_proj_w.iter().map(|v| v * v).sum::<f32>()
+        + grads.dt_proj_b.iter().map(|v| v * v).sum::<f32>()
+        + grads.conv1d_w.iter().map(|v| v * v).sum::<f32>()
+        + grads.conv1d_b.iter().map(|v| v * v).sum::<f32>()
+        + grads.out_proj_w.iter().map(|v| v * v).sum::<f32>()
+}
+
+fn scale_layer_grads(grads: &mut LayerGrads, scale: f32) {
+    grads.a_log.mapv_inplace(|v| v * scale);
+    grads.d_skip.mapv_inplace(|v| v * scale);
+    grads.x_proj_w.mapv_inplace(|v| v * scale);
+    grads.dt_proj_w.mapv_inplace(|v| v * scale);
+    grads.dt_proj_b.mapv_inplace(|v| v * scale);
+    grads.conv1d_w.mapv_inplace(|v| v * scale);
+    grads.conv1d_b.mapv_inplace(|v| v * scale);
+    grads.out_proj_w.mapv_inplace(|v| v * scale);
+}
+
+fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "checkpoint path has no parent directory".to_string())?;
+    fs::create_dir_all(parent).map_err(|err| format!("checkpoint dir create failed: {err}"))?;
+
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("time error: {err}"))?
+        .as_nanos();
+    let pid = std::process::id();
+    let tmp_name = format!(".tmp_ckpt_{pid}_{stamp}");
+    let tmp_path = parent.join(tmp_name);
+
+    fs::write(&tmp_path, bytes).map_err(|err| format!("tmp checkpoint write failed: {err}"))?;
+    fs::rename(&tmp_path, path).map_err(|err| format!("atomic checkpoint rename failed: {err}"))
 }
 
 pub fn make_batch_from_tokens(tokens: &[i64], cursor: usize, batch: usize, seq_len: usize) -> (Array2<i64>, Array2<i64>) {
@@ -506,5 +660,52 @@ mod tests {
             .sum();
         assert!(emb_err <= 1e-8);
         let _ = std::fs::remove_file(&ckpt);
+    }
+
+    #[test]
+    fn eval_step_returns_finite_loss() {
+        let spec = LayerSpec {
+            d_model: 8,
+            d_state: 8,
+            d_conv: 4,
+        };
+        let cfg = default_trainer_config(
+            32,
+            spec,
+            6,
+            ExpansionPlacement::Append,
+            FreezeSelection::FirstN(2),
+            false,
+            1e-3,
+        );
+        let trainer = GenericTrainer::new_random(cfg, 2, 321);
+        let tokens = (0..256).map(|v| (v % 32) as i64).collect::<Vec<_>>();
+        let (ids, tgt) = make_batch_from_tokens(&tokens, 0, 2, 6);
+        let loss = trainer.eval_step(&ids, &tgt);
+        assert!(loss.is_finite());
+    }
+
+    #[test]
+    fn grad_clip_activates_with_tiny_threshold() {
+        let spec = LayerSpec {
+            d_model: 8,
+            d_state: 8,
+            d_conv: 4,
+        };
+        let mut cfg = default_trainer_config(
+            32,
+            spec,
+            6,
+            ExpansionPlacement::Append,
+            FreezeSelection::FirstN(2),
+            false,
+            1e-3,
+        );
+        cfg.grad_clip_norm = Some(1e-6);
+        let mut trainer = GenericTrainer::new_random(cfg, 2, 777);
+        let tokens = (0..256).map(|v| (v % 32) as i64).collect::<Vec<_>>();
+        let (ids, tgt) = make_batch_from_tokens(&tokens, 0, 2, 6);
+        let stats = trainer.train_step(&ids, &tgt);
+        assert!(stats.clipped);
     }
 }
