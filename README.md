@@ -4,9 +4,11 @@
 [![Crates.io](https://img.shields.io/crates/v/rust_trainer.svg)](https://crates.io/crates/rust_trainer)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-A reusable, CPU-first Rust training package for sequence models.
+A CPU-first Rust training package implementing a **Mamba SSM + Hyperspherical Prototype Network (HPN)** architecture.
 
-This project is intended as a standalone training framework/template that teams can adapt to train their own models and datasets. It works as both:
+This is a concrete, working reference implementation — not a blank framework. The model is a stack of Mamba selective state-space layers with an HPN cosine-distance output head and learnable prototype matrix. Teams can use it as-is or fork and replace the layer/loss internals for their own architecture.
+
+It works as both:
 
 - a library dependency in your Rust application
 - a ready-to-run CLI training binary
@@ -199,16 +201,28 @@ trainer.save_checkpoint("checkpoint.bincode").unwrap();
 
 ---
 
+## Architecture
+
+The default model uses:
+
+| Component | Implementation |
+|---|---|
+| Sequence layers | Mamba SSM (causal conv1d + SiLU + discretized state scan) |
+| Output head | Hyperspherical Prototype Network (HPN) |
+| Loss | Squared cosine distance to nearest prototype |
+| Optimizer | AdamW with serializable moment buffers |
+| Inference path | CPU-only; no GPU required |
+
 ## Customize for your own architecture
 
-You can adapt this package to your own model by replacing or extending:
+The package is designed to be forked for other architectures. Replace or extend:
 
-1. layer forward/backward path in `src/layer.rs`
-2. output loss/head logic in `src/nn.rs`
-3. trainer state wiring in `src/generic_trainer.rs`
-4. data loading logic in `src/bin/train_generic.rs`
+1. Layer forward/backward path in `src/layer.rs` — swap Mamba for Transformer, LSTM, etc.
+2. Output loss/head logic in `src/nn.rs` — swap HPN for cross-entropy, contrastive loss, etc.
+3. Trainer state wiring in `src/generic_trainer.rs` — add or remove parameter groups
+4. Data loading logic in `src/bin/train_generic.rs`
 
-This lets you keep checkpointing, optimizer state, logging, and run controls while swapping in your model-specific math.
+The checkpointing, optimizer state, logging, expansion, and freeze infrastructure are all architecture-independent and can be kept as-is.
 
 ---
 

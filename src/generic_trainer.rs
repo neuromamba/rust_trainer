@@ -59,7 +59,7 @@ impl LayerAdamState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThinkOptimizerState {
+pub struct MambaHpnOptimizerState {
     pub embedding: Adam2,
     pub prototypes: Adam2,
     pub layers: Vec<LayerAdamState>,
@@ -70,7 +70,7 @@ pub struct GenericTrainer {
     pub cfg: GenericTrainerConfig,
     pub params: TrainerParams,
     pub prototypes: Array2<f32>,
-    pub optimizer: ThinkOptimizerState,
+    pub optimizer: MambaHpnOptimizerState,
     pub frozen_layer_indices: Vec<usize>,
     pub step: usize,
 }
@@ -107,7 +107,7 @@ impl GenericTrainer {
             .iter()
             .map(LayerAdamState::zeros_like)
             .collect::<Vec<_>>();
-        let optimizer = ThinkOptimizerState {
+        let optimizer = MambaHpnOptimizerState {
             embedding: Adam2::zeros(embedding_dim.0, embedding_dim.1),
             prototypes: Adam2::zeros(proto_dim.0, proto_dim.1),
             layers: layer_states,
