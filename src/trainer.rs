@@ -1,6 +1,6 @@
 use ndarray::{Array1, Array2};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rand_distr::StandardNormal;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -227,13 +227,17 @@ impl ExperimentalTrainer {
     }
 
     pub fn save_checkpoint<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
-        let bytes = bincode::serialize(self).map_err(|err| format!("serialize failed: {err}"))?;
+        let bytes = bincode::serde::encode_to_vec(self, bincode::config::standard())
+            .map_err(|err| format!("serialize failed: {err}"))?;
         fs::write(path, bytes).map_err(|err| format!("checkpoint write failed: {err}"))
     }
 
     pub fn load_checkpoint<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let bytes = fs::read(path).map_err(|err| format!("checkpoint read failed: {err}"))?;
-        bincode::deserialize::<Self>(&bytes).map_err(|err| format!("deserialize failed: {err}"))
+        let (decoded, _bytes_read) =
+            bincode::serde::decode_from_slice::<Self, _>(&bytes, bincode::config::standard())
+                .map_err(|err| format!("deserialize failed: {err}"))?;
+        Ok(decoded)
     }
 
     pub fn expanded_layer_count(&self) -> usize {

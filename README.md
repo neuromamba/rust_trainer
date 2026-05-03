@@ -32,6 +32,29 @@ No Python runtime is required.
 
 ---
 
+## Production readiness status
+
+Current state: production-candidate for single-node CPU training, not yet full production-grade.
+
+What is already robust:
+
+- deterministic resume behavior (checkpoint + optimizer state + step)
+- configurable expansion/freeze controls for staged training
+- validated SIMD and backward kernels with scalar parity probes
+- CI, release, and crate packaging automation
+
+What is still missing for full production operation:
+
+- built-in validation/evaluation loop and early-stopping controls
+- streaming/sharded dataset pipeline (current path loads full token file into memory)
+- LR schedule + grad clipping + NaN guardrails in the main train loop
+- checkpoint format versioning and atomic checkpoint writes
+- cross-framework parity harness against Python/JAX reference on shared batches
+
+Detailed roadmap and release milestones are tracked in [roadmap.md](roadmap.md).
+
+---
+
 ## Design philosophy
 
 - Keep trainer internals explicit and hackable.
@@ -237,16 +260,6 @@ git push origin v0.2.0
 ```
 
 The release workflow runs tests, builds binaries, creates a GitHub Release, and can publish to crates.io when credentials are configured.
-
----
-
-## Roadmap
-
-- [ ] Cross-framework parity tests against external reference trainers
-- [ ] Streaming dataset pipeline with sharding and packing
-- [ ] LR schedules and gradient clipping
-- [ ] Sampling/generation binary
-- [ ] Optional Python bindings via PyO3
 
 ---
 

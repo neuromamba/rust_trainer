@@ -5,6 +5,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 
 ## [Unreleased]
 
+### Changed
+- Upgraded core dependencies to current versions:
+	- `ndarray` `0.17.2`
+	- `rand` `0.10.1`
+	- `rand_distr` `0.6.0`
+	- `rayon` `1.12.0`
+	- `wide` `1.3.0`
+	- `serde` `1.0.228`
+	- `serde_json` `1.0.149`
+	- `bincode` `2.0.1` with serde support
+- Migrated checkpoint serialization calls to bincode v2 serde API.
+- Moved roadmap details from `README.md` to dedicated `roadmap.md`.
+
 ### Planned
 - Cross-framework parity check against Python/JAX trainer on shared deterministic batches
 - Streaming data pipeline: shard files, shuffle buffer, packed sequences
