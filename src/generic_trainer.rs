@@ -270,6 +270,7 @@ impl GenericTrainer {
 
         // FF-only step: update theta (d_skip) locally and skip global BP.
         if !bp_due {
+            #[allow(clippy::needless_range_loop)]
             for li in 0..self.params.layers.len() {
                 if self.frozen_layer_indices.binary_search(&li).is_ok() {
                     continue;
@@ -519,6 +520,7 @@ impl GenericTrainer {
             step,
         );
 
+        #[allow(clippy::needless_range_loop)]
         for li in 0..self.params.layers.len() {
             if self.frozen_layer_indices.binary_search(&li).is_ok() {
                 continue;

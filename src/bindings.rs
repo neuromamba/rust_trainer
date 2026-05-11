@@ -1,9 +1,11 @@
-/**
+/*!
  * Python bindings for the Rust trainer.
  *
  * Exposes the core training loop as a Python-callable API via PyO3.
  * Entry point: neuromamba_trainer.train_from_config(config_path, output_dir)
  */
+// PyO3 macro expansions generate PyErr::from(PyErr) patterns; suppress false positive.
+#![allow(clippy::useless_conversion)]
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;

@@ -43,6 +43,7 @@ pub struct MultiWorkerShardedBatcher {
 }
 
 impl MultiWorkerShardedBatcher {
+    #[allow(clippy::too_many_arguments)]
     pub fn from_dir<P: AsRef<Path>>(
         dir: P,
         extension_filter: &str,

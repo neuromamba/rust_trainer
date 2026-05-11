@@ -31,6 +31,7 @@ impl Adam2 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn adamw_update_1d(
     p: &mut Array1<f32>,
     grad: &Array1<f32>,
@@ -59,6 +60,7 @@ pub fn adamw_update_1d(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn adamw_update_2d(
     p: &mut Array2<f32>,
     grad: &Array2<f32>,

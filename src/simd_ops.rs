@@ -97,7 +97,7 @@ pub fn ssm_scan_forward_simd(
     let seq_len = bs.shape()[0];
     let d_state = bs.shape()[1];
     let d_model = delta.shape()[1];
-    assert!(d_state % LANES == 0, "d_state must be multiple of 8");
+    assert!(d_state.is_multiple_of(LANES), "d_state must be multiple of 8");
 
     let bs_s = bs.as_slice().expect("bs must be contiguous");
     let cs_s = cs.as_slice().expect("cs must be contiguous");
@@ -210,7 +210,7 @@ pub fn conv1d_silu_forward_simd(
                     if xk >= 0 {
                         let xv = load8(x_s, (xk as usize) * d_model + d_off);
                         let w_block = f32x8::from([
-                            w_s[(d_off + 0) * d_conv + k],
+                            w_s[d_off * d_conv + k],
                             w_s[(d_off + 1) * d_conv + k],
                             w_s[(d_off + 2) * d_conv + k],
                             w_s[(d_off + 3) * d_conv + k],
@@ -328,7 +328,7 @@ pub fn ssm_scan_backward_simd(
     let seq_len = bs.shape()[0];
     let d_state = bs.shape()[1];
     let d_model = delta.shape()[1];
-    assert!(d_state % LANES == 0, "d_state must be multiple of 8");
+    assert!(d_state.is_multiple_of(LANES), "d_state must be multiple of 8");
 
     let bs_s = bs.as_slice().expect("bs contiguous");
     let cs_s = cs.as_slice().expect("cs contiguous");

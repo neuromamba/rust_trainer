@@ -120,7 +120,7 @@ pub fn forward_with_cache(
         let mut h = Array2::<f32>::zeros((d_model, d_state));
         let mut h_traj = Array3::<f32>::zeros((seq_len, d_model, d_state));
         let mut y_pre = Array2::<f32>::zeros((seq_len, d_model));
-        if d_state % LANES == 0 {
+        if d_state.is_multiple_of(LANES) {
             ssm_scan_forward_simd(
                 bs.view(),
                 cs.view(),
@@ -193,7 +193,7 @@ pub fn backward(
         let mut d_bs = Array2::<f32>::zeros((seq_len, d_state));
         let mut d_delta = Array2::<f32>::zeros((seq_len, d_model));
 
-        let scan = if d_state % LANES == 0 {
+        let scan = if d_state.is_multiple_of(LANES) {
             ssm_scan_backward_simd(
                 cb.bs.view(),
                 cb.cs.view(),

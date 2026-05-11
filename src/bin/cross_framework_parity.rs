@@ -63,6 +63,7 @@ fn main() {
     let classes = 5usize;
 
     let mut z = vec![vec![0.0f32; dim]; rows];
+    #[allow(clippy::needless_range_loop)]
     for r in 0..rows {
         for c in 0..dim {
             z[r][c] = ((r * dim + c) as f32 * 0.03).sin() * 0.7 + 0.1 * (c as f32);
@@ -70,6 +71,7 @@ fn main() {
     }
 
     let mut prototypes = vec![vec![0.0f32; dim]; classes];
+    #[allow(clippy::needless_range_loop)]
     for k in 0..classes {
         for c in 0..dim {
             prototypes[k][c] = ((k * dim + c + 11) as f32 * 0.02).cos() * 0.6 + 0.05 * (k as f32);
