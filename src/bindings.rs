@@ -145,7 +145,7 @@ pub fn neuromamba_trainer(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<
     m.add_function(wrap_pyfunction!(train_from_config, m)?)?;
     m.add_class::<TrainerConfig>()?;
 
-    m.add("__version__", "0.1.0")?;
+    m.add("__version__", "0.1.3")?;
     m.add(
         "__doc__",
         "NeuroMamba Trainer — Rust-native trainer with FF+BP cadencing and orthogonal gradient projections.",

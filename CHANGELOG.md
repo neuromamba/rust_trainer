@@ -5,6 +5,8 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-05-11
+
 ### Changed
 - Upgraded core dependencies to current versions:
 	- `ndarray` `0.17.2`
@@ -53,5 +55,6 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 - **CI workflow**: lint, test, build on push/PR
 - **Release workflow**: multi-arch binary build, GitHub Release, optional crates.io publish
 
-[Unreleased]: https://github.com/npradeep357/rust_trainer/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/npradeep357/rust_trainer/releases/tag/v0.1.0
+[Unreleased]: https://github.com/neuromamba/rust_trainer/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/neuromamba/rust_trainer/releases/tag/v0.1.3
+[0.1.0]: https://github.com/neuromamba/rust_trainer/releases/tag/v0.1.0

@@ -105,17 +105,17 @@ twine upload target/wheels/*
 2. **pyproject.toml**: Versioned dynamically from Cargo.toml (via maturin)
 3. **CHANGELOG.md**: Document release notes under `## [X.Y.Z]`
 
-### Example: Release v0.2.0
+### Example: Release v0.1.3
 
 ```bash
 # Update version in Cargo.toml
-sed -i 's/version = "0.1.0"/version = "0.2.0"/' Cargo.toml
+sed -i 's/version = "0.1.0"/version = "0.1.3"/' Cargo.toml
 
 # Update CHANGELOG.md
 cat > CHANGELOG.md << 'EOF'
 # Changelog
 
-## [0.2.0] — 2026-05-15
+## [0.1.3] — 2026-05-11
 
 ### Added
 - Support for distributed gradient surgery across Rust and Python
@@ -131,9 +131,9 @@ EOF
 
 # Commit and tag
 git add Cargo.toml CHANGELOG.md
-git commit -m "Release v0.2.0"
-git tag v0.2.0
-git push origin main v0.2.0
+git commit -m "Release v0.1.3"
+git tag v0.1.3
+git push origin main v0.1.3
 ```
 
 ## GitHub Actions Workflows
