@@ -1,0 +1,36 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rust-trainer"
+dynamic = ["version"]
+description = "CPU-first pure-Rust supervised trainer for Selective State Space Models with Hyperspherical Prototype Networks."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [{name = "NeuroMamba Contributors"}]
+keywords = ["mamba", "ssm", "trainer", "cpu", "hpn", "state-space-models"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+[project.urls]
+homepage = "https://github.com/neuromamba/rust_trainer"
+repository = "https://github.com/neuromamba/rust_trainer"
+documentation = "https://docs.rs/rust_trainer"
+
+[tool.maturin]
+module-name = "rust_trainer"
+features = ["python"]

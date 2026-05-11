@@ -175,6 +175,12 @@ cargo run --release --bin train_generic -- \
 | `--placement STR` | `specific:1,3,4,5` | Expansion placement |
 | `--freeze STR` | `first:2` | Freeze policy |
 | `--lr F` | `1e-4` | AdamW learning rate |
+| `--ff-lr F` | `1e-4` | Forward-Forward local learning rate for d_skip updates |
+| `--bp-cadence-steps N` | `32` | Apply global BP every N train steps (FF runs each step) |
+| `--gradient-surgery-method STR` | `pcgrad` | Conflict handling method: `pcgrad`, `gradnorm`, `cagradstep` |
+| `--gradient-surgery-epsilon F` | `1e-8` | Numerical stability epsilon for surgery operations |
+| `--gradnorm-alpha F` | `0.2` | GradNorm disagreement scaling factor |
+| `--cagrad-lambda F` | `1.0` | CAGradStep conflict-aversion strength |
 | `--freeze-embedding 1` | `false` | Freeze embedding table |
 | `--token-file PATH` | none | Integer token dataset |
 | `--token-dir PATH` | none | Directory of shard files for streaming training |

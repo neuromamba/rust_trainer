@@ -6,6 +6,7 @@ use rust_trainer::generic_trainer::{
     default_trainer_config, make_batch_from_tokens, max_token_plus_one, parse_freeze, parse_placement,
     tokenize_int_file, GenericTrainer,
 };
+use rust_trainer::loss::GradientSurgeryMethod;
 use rust_trainer::LayerSpec;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -19,6 +20,7 @@ const RUN_STATE_VERSION: u32 = 1;
 #[derive(Debug, Clone)]
 struct Args {
     out_dir: String,
+    config: Option<String>,
     steps: usize,
     save_every: usize,
     log_every: usize,
@@ -53,6 +55,63 @@ struct Args {
     fail_on_non_finite: bool,
     lr_warmup_steps: usize,
     lr_min_scale: f32,
+    ff_lr: f32,
+    bp_cadence_steps: usize,
+    gradient_surgery_method: String,
+    gradient_surgery_epsilon: f32,
+    gradnorm_alpha: f32,
+    cagrad_lambda: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FileConfig {
+    total_steps: Option<usize>,
+    seed: Option<u64>,
+    dataset: Option<FileDatasetConfig>,
+    model: Option<FileModelConfig>,
+    ff: Option<FileFfConfig>,
+    bp: Option<FileBpConfig>,
+    gradient_surgery: Option<FileGradientSurgeryConfig>,
+    logging: Option<FileLoggingConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FileDatasetConfig {
+    max_seq_len: Option<usize>,
+    batch_size: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FileModelConfig {
+    num_layers: Option<usize>,
+    d_model: Option<usize>,
+    d_state: Option<usize>,
+    d_conv: Option<usize>,
+    num_classes: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FileFfConfig {
+    lr: Option<f32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FileBpConfig {
+    cadence_steps: Option<usize>,
+    lr: Option<f32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FileGradientSurgeryConfig {
+    method: Option<String>,
+    epsilon: Option<f32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FileLoggingConfig {
+    log_dir: Option<String>,
+    run_id: Option<String>,
+    log_every: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,9 +227,84 @@ fn scheduled_lr(base_lr: f32, step: usize, total_steps: usize, warmup_steps: usi
     floor + (base_lr - floor) * cosine
 }
 
+fn load_file_config(path: &str) -> Result<FileConfig, String> {
+    let raw = fs::read_to_string(path).map_err(|err| format!("config read failed: {err}"))?;
+    if path.ends_with(".yaml") || path.ends_with(".yml") {
+        serde_yaml::from_str::<FileConfig>(&raw).map_err(|err| format!("yaml parse failed: {err}"))
+    } else if path.ends_with(".json") {
+        serde_json::from_str::<FileConfig>(&raw).map_err(|err| format!("json parse failed: {err}"))
+    } else {
+        Err("config must end with .yaml/.yml or .json".to_string())
+    }
+}
+
+fn apply_file_config(args: &mut Args, cfg: &FileConfig) {
+    if let Some(v) = cfg.total_steps {
+        args.steps = v;
+    }
+    if let Some(v) = cfg.seed {
+        args.seed = v;
+    }
+    if let Some(dataset) = &cfg.dataset {
+        if let Some(v) = dataset.max_seq_len {
+            args.seq_len = v;
+        }
+        if let Some(v) = dataset.batch_size {
+            args.batch_size = v;
+        }
+    }
+    if let Some(model) = &cfg.model {
+        if let Some(v) = model.num_layers {
+            args.target_layers = v;
+        }
+        if let Some(v) = model.d_model {
+            args.d_model = v;
+        }
+        if let Some(v) = model.d_state {
+            args.d_state = v;
+        }
+        if let Some(v) = model.d_conv {
+            args.d_conv = v;
+        }
+        if let Some(v) = model.num_classes {
+            args.vocab_size_override = Some(v);
+        }
+    }
+    if let Some(ff) = &cfg.ff {
+        if let Some(v) = ff.lr {
+            args.ff_lr = v;
+        }
+    }
+    if let Some(bp) = &cfg.bp {
+        if let Some(v) = bp.cadence_steps {
+            args.bp_cadence_steps = v;
+        }
+        if let Some(v) = bp.lr {
+            args.lr = v;
+        }
+    }
+    if let Some(gs) = &cfg.gradient_surgery {
+        if let Some(v) = &gs.method {
+            args.gradient_surgery_method = v.clone();
+        }
+        if let Some(v) = gs.epsilon {
+            args.gradient_surgery_epsilon = v;
+        }
+    }
+    if let Some(logging) = &cfg.logging {
+        if let Some(v) = logging.log_every {
+            args.log_every = v;
+        }
+        if let (Some(log_dir), Some(run_id)) = (&logging.log_dir, &logging.run_id) {
+            args.out_dir = format!("{}/{}", log_dir.trim_end_matches('/'), run_id);
+        }
+    }
+}
+
 fn parse_args() -> Args {
     let mut args = Args {
         out_dir: "runs/RUST_TRAINER".to_string(),
+        config: None,
         steps: 5000,
         save_every: 200,
         log_every: 20,
@@ -205,13 +339,31 @@ fn parse_args() -> Args {
         fail_on_non_finite: false,
         lr_warmup_steps: 0,
         lr_min_scale: 0.1,
+        ff_lr: 1e-4,
+        bp_cadence_steps: 32,
+        gradient_surgery_method: "pcgrad".to_string(),
+        gradient_surgery_epsilon: 1e-8,
+        gradnorm_alpha: 0.2,
+        cagrad_lambda: 1.0,
     };
 
     let raw = env::args().skip(1).collect::<Vec<_>>();
     let mut i = 0usize;
     while i < raw.len() {
         match raw[i].as_str() {
+            "--config" if i + 1 < raw.len() => {
+                let cfg_path = raw[i + 1].clone();
+                let cfg = load_file_config(&cfg_path)
+                    .unwrap_or_else(|err| panic!("failed to load config {}: {}", cfg_path, err));
+                args.config = Some(cfg_path);
+                apply_file_config(&mut args, &cfg);
+                i += 2;
+            }
             "--out-dir" if i + 1 < raw.len() => {
+                args.out_dir = raw[i + 1].clone();
+                i += 2;
+            }
+            "--output-dir" if i + 1 < raw.len() => {
                 args.out_dir = raw[i + 1].clone();
                 i += 2;
             }
@@ -315,6 +467,10 @@ fn parse_args() -> Args {
                 args.resume = Some(raw[i + 1].clone());
                 i += 2;
             }
+            "--base-ckpt" if i + 1 < raw.len() => {
+                args.resume = Some(raw[i + 1].clone());
+                i += 2;
+            }
             "--vocab-size" if i + 1 < raw.len() => {
                 args.vocab_size_override = raw[i + 1].parse::<usize>().ok();
                 i += 2;
@@ -351,12 +507,47 @@ fn parse_args() -> Args {
                 args.lr_min_scale = raw[i + 1].parse().unwrap_or(args.lr_min_scale);
                 i += 2;
             }
+            "--ff-lr" if i + 1 < raw.len() => {
+                args.ff_lr = raw[i + 1].parse().unwrap_or(args.ff_lr);
+                i += 2;
+            }
+            "--bp-cadence-steps" if i + 1 < raw.len() => {
+                args.bp_cadence_steps = raw[i + 1].parse().unwrap_or(args.bp_cadence_steps);
+                i += 2;
+            }
+            "--gradient-surgery-method" if i + 1 < raw.len() => {
+                args.gradient_surgery_method = raw[i + 1].clone();
+                i += 2;
+            }
+            "--gradient-surgery-epsilon" if i + 1 < raw.len() => {
+                args.gradient_surgery_epsilon = raw[i + 1]
+                    .parse()
+                    .unwrap_or(args.gradient_surgery_epsilon);
+                i += 2;
+            }
+            "--gradnorm-alpha" if i + 1 < raw.len() => {
+                args.gradnorm_alpha = raw[i + 1].parse().unwrap_or(args.gradnorm_alpha);
+                i += 2;
+            }
+            "--cagrad-lambda" if i + 1 < raw.len() => {
+                args.cagrad_lambda = raw[i + 1].parse().unwrap_or(args.cagrad_lambda);
+                i += 2;
+            }
             _ => {
                 i += 1;
             }
         }
     }
     args
+}
+
+fn parse_surgery_method(raw: &str) -> GradientSurgeryMethod {
+    match raw.to_ascii_lowercase().as_str() {
+        "pcgrad" => GradientSurgeryMethod::PcGrad,
+        "gradnorm" => GradientSurgeryMethod::GradNorm,
+        "cagradstep" | "cagrad" => GradientSurgeryMethod::CAGradStep,
+        _ => GradientSurgeryMethod::PcGrad,
+    }
 }
 
 fn load_run_state(path: &Path) -> Result<RunState, String> {
@@ -548,6 +739,12 @@ fn main() {
         None
     };
     trainer.cfg.fail_on_non_finite = args.fail_on_non_finite;
+    trainer.cfg.ff_lr = args.ff_lr;
+    trainer.cfg.bp_cadence_steps = args.bp_cadence_steps.max(1);
+    trainer.cfg.gradient_surgery.method = parse_surgery_method(&args.gradient_surgery_method);
+    trainer.cfg.gradient_surgery.epsilon = args.gradient_surgery_epsilon;
+    trainer.cfg.gradient_surgery.gradnorm_alpha = args.gradnorm_alpha;
+    trainer.cfg.gradient_surgery.cagrad_lambda = args.cagrad_lambda;
 
     let metrics_path = format!("{}/metrics.jsonl", args.out_dir);
     let ckpt_path = format!("{}/latest.bincode", args.out_dir);
@@ -593,6 +790,12 @@ fn main() {
                 "top_grad_norm": stats.top_grad_norm,
                 "grad_global_norm": stats.grad_global_norm,
                 "lr": stats.lr,
+                "ff_loss_mean": stats.ff_loss_mean,
+                "bp_applied": stats.bp_applied,
+                "ff_updates_applied": stats.ff_updates_applied,
+                "bp_updates_applied": stats.bp_updates_applied,
+                "conflict_layers": stats.conflict_layers,
+                "surgery_method": stats.surgery_method,
                 "clipped": stats.clipped,
                 "skipped_update": stats.skipped_update,
                 "non_finite_detected": stats.non_finite_detected,
@@ -689,6 +892,9 @@ fn main() {
         "best_val_loss": if best_val.is_finite() { Some(best_val) } else { None::<f32> },
         "layers": trainer.params.layers.len(),
         "frozen": trainer.frozen_layer_indices,
+        "ff_lr": trainer.cfg.ff_lr,
+        "bp_cadence_steps": trainer.cfg.bp_cadence_steps,
+        "gradient_surgery_method": format!("{:?}", trainer.cfg.gradient_surgery.method).to_lowercase(),
         "checkpoint": ckpt_path,
         "best_checkpoint": best_ckpt_path,
         "metrics": metrics_path,

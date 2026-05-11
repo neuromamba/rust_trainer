@@ -110,8 +110,15 @@ fn main() {
     };
     let mut trainer = ExperimentalTrainer::from_base(base, cfg);
     let before = trainer.layer_norms();
+    let d = spec.d_model;
     for _ in 0..cycles {
-        let _ = trainer.train_ff_cycle();
+        let n = trainer.expanded_layer_count();
+        // Dummy activations: pos=+0.5, neg=-0.5 (parity test only cares about freeze)
+        let h_pos: Vec<ndarray::Array1<f32>> =
+            (0..n).map(|_| ndarray::Array1::from_elem(d, 0.5_f32)).collect();
+        let h_neg: Vec<ndarray::Array1<f32>> =
+            (0..n).map(|_| ndarray::Array1::from_elem(d, -0.5_f32)).collect();
+        let _ = trainer.train_ff_cycle(&h_pos, &h_neg);
     }
     let after = trainer.layer_norms();
 

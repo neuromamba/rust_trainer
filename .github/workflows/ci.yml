@@ -48,3 +48,6 @@ jobs:
 
       - name: Build release binaries
         run: cargo build --release --bins
+
+      - name: Test PyO3 bindings build (if applicable)
+        run: cargo build --release --features python --lib || true

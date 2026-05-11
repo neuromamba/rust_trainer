@@ -1,4 +1,5 @@
 use crate::layer::{backward as layer_backward, forward_with_cache, LayerForwardCache, LayerGrads};
+use crate::loss::{cagradstep, gradnorm_ff_scale, pcgrad, GradientSurgeryConfig, GradientSurgeryMethod};
 use crate::nn::{hpn_loss_and_grad_z, hpn_loss_and_grads, layer_norm_backward, layer_norm_forward};
 use crate::optim::{adamw_update_1d, adamw_update_2d, Adam1, Adam2};
 use crate::trainer::{
@@ -30,6 +31,12 @@ pub struct GenericTrainerConfig {
     pub freeze_selection: FreezeSelection,
     pub freeze_embedding: bool,
     pub adamw: AdamWConfig,
+    #[serde(default = "default_ff_lr")]
+    pub ff_lr: f32,
+    #[serde(default = "default_bp_cadence_steps")]
+    pub bp_cadence_steps: usize,
+    #[serde(default)]
+    pub gradient_surgery: GradientSurgeryConfig,
     pub grad_clip_norm: Option<f32>,
     pub fail_on_non_finite: bool,
 }
@@ -95,9 +102,23 @@ pub struct StepStats {
     pub top_grad_norm: f32,
     pub grad_global_norm: f32,
     pub lr: f32,
+    pub ff_loss_mean: f32,
+    pub bp_applied: bool,
+    pub ff_updates_applied: usize,
+    pub bp_updates_applied: usize,
+    pub conflict_layers: usize,
+    pub surgery_method: String,
     pub clipped: bool,
     pub skipped_update: bool,
     pub non_finite_detected: bool,
+}
+
+fn default_ff_lr() -> f32 {
+    1e-4
+}
+
+fn default_bp_cadence_steps() -> usize {
+    1
 }
 
 impl GenericTrainer {
@@ -192,6 +213,89 @@ impl GenericTrainer {
             caches.push(cache);
         }
 
+        // Build FF activations from layer inputs (x_in) using a lightweight
+        // corruption scheme for negatives (time shift + alternating sign mask).
+        let mut ff_grads = Vec::with_capacity(self.params.layers.len());
+        let mut ff_losses = Vec::with_capacity(self.params.layers.len());
+        let mut ff_updates_applied = 0usize;
+        for (li, layer) in self.params.layers.iter().enumerate() {
+            if self.frozen_layer_indices.binary_search(&li).is_ok() {
+                ff_losses.push(0.0);
+                ff_grads.push(Array1::<f32>::zeros(layer.d_skip.len()));
+                continue;
+            }
+            let cache = &caches[li];
+            let (b, t, d) = (cache.x_in.shape()[0], cache.x_in.shape()[1], cache.x_in.shape()[2]);
+            let denom = (b * t) as f32;
+            let mut h_pos = Array1::<f32>::zeros(d);
+            let mut h_neg = Array1::<f32>::zeros(d);
+            for bi in 0..b {
+                for ti in 0..t {
+                    let src_t = (ti + 1) % t;
+                    for di in 0..d {
+                        let pv = cache.x_in[(bi, ti, di)];
+                        let mask = if (ti + di) % 2 == 0 { 1.0 } else { -1.0 };
+                        let nv = cache.x_in[(bi, src_t, di)] * mask;
+                        h_pos[di] += pv;
+                        h_neg[di] += nv;
+                    }
+                }
+            }
+            h_pos.mapv_inplace(|v| v / denom);
+            h_neg.mapv_inplace(|v| v / denom);
+            let ff_loss = MambaLayerParams::ff_loss_pair(&h_pos, &h_neg, &layer.d_skip);
+            let ff_grad = MambaLayerParams::ff_grad_theta(&h_pos, &h_neg, &layer.d_skip);
+            if ff_loss > 0.0 {
+                ff_updates_applied += 1;
+            }
+            ff_losses.push(ff_loss);
+            ff_grads.push(ff_grad);
+        }
+        let ff_loss_mean = if ff_losses.is_empty() {
+            0.0
+        } else {
+            ff_losses.iter().copied().sum::<f32>() / ff_losses.len() as f32
+        };
+
+        let cadence = self.cfg.bp_cadence_steps.max(1);
+        let bp_due = (self.step + 1).is_multiple_of(cadence);
+
+        // FF-only step: update theta (d_skip) locally and skip global BP.
+        if !bp_due {
+            for li in 0..self.params.layers.len() {
+                if self.frozen_layer_indices.binary_search(&li).is_ok() {
+                    continue;
+                }
+                let g = &ff_grads[li];
+                for i in 0..self.params.layers[li].d_skip.len() {
+                    self.params.layers[li].d_skip[i] -= self.cfg.ff_lr * g[i];
+                }
+            }
+            self.step += 1;
+            let ff_grad_norm_sq = ff_grads
+                .iter()
+                .map(|g| g.iter().map(|v| v * v).sum::<f32>())
+                .sum::<f32>();
+            return StepStats {
+                step: self.step,
+                loss: ff_loss_mean,
+                embedding_grad_norm: 0.0,
+                prototype_grad_norm: 0.0,
+                top_grad_norm: 0.0,
+                grad_global_norm: ff_grad_norm_sq.sqrt(),
+                lr: self.cfg.adamw.lr,
+                ff_loss_mean,
+                bp_applied: false,
+                ff_updates_applied,
+                bp_updates_applied: 0,
+                conflict_layers: 0,
+                surgery_method: format!("{:?}", self.cfg.gradient_surgery.method).to_lowercase(),
+                clipped: false,
+                skipped_update: false,
+                non_finite_detected: !ff_loss_mean.is_finite(),
+            };
+        }
+
         let (x_ln, ln_cache) = layer_norm_forward(residual.view());
         let z_flat = x_ln
             .clone()
@@ -227,6 +331,45 @@ impl GenericTrainer {
             }
         }
 
+        // Blend FF gradients into BP gradients for d_skip using selected surgery.
+        let mut conflict_layers = 0usize;
+        let ff_to_bp_grad_scale = if self.cfg.adamw.lr.abs() > 1e-12 {
+            self.cfg.ff_lr / self.cfg.adamw.lr
+        } else {
+            1.0
+        };
+        for li in 0..self.params.layers.len() {
+            if self.frozen_layer_indices.binary_search(&li).is_ok() {
+                continue;
+            }
+            let ff_grad = &ff_grads[li];
+            let bp_grad = layer_grads[li].d_skip.clone();
+            if ff_grad.dot(&bp_grad) < 0.0 {
+                conflict_layers += 1;
+            }
+            let ff_after_surgery = match self.cfg.gradient_surgery.method {
+                GradientSurgeryMethod::PcGrad => {
+                    pcgrad(ff_grad, &bp_grad, self.cfg.gradient_surgery.epsilon)
+                }
+                GradientSurgeryMethod::GradNorm => {
+                    let scale = gradnorm_ff_scale(
+                        ff_grad,
+                        &bp_grad,
+                        self.cfg.gradient_surgery.gradnorm_alpha,
+                        self.cfg.gradient_surgery.epsilon,
+                    );
+                    ff_grad * scale
+                }
+                GradientSurgeryMethod::CAGradStep => cagradstep(
+                    ff_grad,
+                    &bp_grad,
+                    self.cfg.gradient_surgery.cagrad_lambda,
+                    self.cfg.gradient_surgery.epsilon,
+                ),
+            };
+            layer_grads[li].d_skip += &(ff_after_surgery * ff_to_bp_grad_scale);
+        }
+
         let embedding_grad_norm = embedding_grads.iter().map(|v| v * v).sum::<f32>().sqrt();
         let prototype_grad_norm = d_prototypes.iter().map(|v| v * v).sum::<f32>().sqrt();
 
@@ -255,6 +398,12 @@ impl GenericTrainer {
                 top_grad_norm,
                 grad_global_norm,
                 lr: self.cfg.adamw.lr,
+                ff_loss_mean,
+                bp_applied: true,
+                ff_updates_applied,
+                bp_updates_applied: self.params.layers.len() - self.frozen_layer_indices.len(),
+                conflict_layers,
+                surgery_method: format!("{:?}", self.cfg.gradient_surgery.method).to_lowercase(),
                 clipped: false,
                 skipped_update: true,
                 non_finite_detected: true,
@@ -285,6 +434,12 @@ impl GenericTrainer {
             top_grad_norm,
             grad_global_norm,
             lr: self.cfg.adamw.lr,
+            ff_loss_mean,
+            bp_applied: true,
+            ff_updates_applied,
+            bp_updates_applied: self.params.layers.len() - self.frozen_layer_indices.len(),
+            conflict_layers,
+            surgery_method: format!("{:?}", self.cfg.gradient_surgery.method).to_lowercase(),
             clipped,
             skipped_update: false,
             non_finite_detected: false,
@@ -480,6 +635,9 @@ pub fn default_trainer_config(
             lr,
             ..AdamWConfig::default()
         },
+        ff_lr: lr,
+        bp_cadence_steps: 1,
+        gradient_surgery: GradientSurgeryConfig::default(),
         grad_clip_norm: None,
         fail_on_non_finite: false,
     }
@@ -621,6 +779,7 @@ pub fn grad_l2_1d(v: &Array1<f32>) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::loss::GradientSurgeryMethod;
 
     #[test]
     fn checkpoint_resume_is_deterministic_next_step() {
@@ -707,5 +866,61 @@ mod tests {
         let (ids, tgt) = make_batch_from_tokens(&tokens, 0, 2, 6);
         let stats = trainer.train_step(&ids, &tgt);
         assert!(stats.clipped);
+    }
+
+    #[test]
+    fn cadence_skips_bp_until_due() {
+        let spec = LayerSpec {
+            d_model: 8,
+            d_state: 8,
+            d_conv: 4,
+        };
+        let mut cfg = default_trainer_config(
+            32,
+            spec,
+            6,
+            ExpansionPlacement::Append,
+            FreezeSelection::FirstN(2),
+            false,
+            1e-3,
+        );
+        cfg.bp_cadence_steps = 3;
+        let mut trainer = GenericTrainer::new_random(cfg, 2, 808);
+        let tokens = (0..256).map(|v| (v % 32) as i64).collect::<Vec<_>>();
+        let (ids, tgt) = make_batch_from_tokens(&tokens, 0, 2, 6);
+
+        let s1 = trainer.train_step(&ids, &tgt);
+        let s2 = trainer.train_step(&ids, &tgt);
+        let s3 = trainer.train_step(&ids, &tgt);
+
+        assert!(!s1.bp_applied);
+        assert!(!s2.bp_applied);
+        assert!(s3.bp_applied);
+    }
+
+    #[test]
+    fn surgery_method_switches_are_active() {
+        let spec = LayerSpec {
+            d_model: 8,
+            d_state: 8,
+            d_conv: 4,
+        };
+        let mut cfg = default_trainer_config(
+            32,
+            spec,
+            6,
+            ExpansionPlacement::Append,
+            FreezeSelection::FirstN(2),
+            false,
+            1e-3,
+        );
+        cfg.bp_cadence_steps = 1;
+        cfg.gradient_surgery.method = GradientSurgeryMethod::GradNorm;
+        let mut trainer = GenericTrainer::new_random(cfg, 2, 909);
+        let tokens = (0..256).map(|v| (v % 32) as i64).collect::<Vec<_>>();
+        let (ids, tgt) = make_batch_from_tokens(&tokens, 0, 2, 6);
+        let s = trainer.train_step(&ids, &tgt);
+        assert!(s.bp_applied);
+        assert_eq!(s.surgery_method, "gradnorm");
     }
 }
