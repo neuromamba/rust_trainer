@@ -3,8 +3,8 @@ use rust_trainer::data_stream::{
     ShardedCursorState, ShardedTokenStream,
 };
 use rust_trainer::generic_trainer::{
-    default_trainer_config, make_batch_from_tokens, max_token_plus_one, parse_freeze, parse_placement,
-    tokenize_int_file, GenericTrainer,
+    default_trainer_config, make_batch_from_tokens, max_token_plus_one, parse_freeze,
+    parse_placement, tokenize_int_file, GenericTrainer,
 };
 use rust_trainer::loss::GradientSurgeryMethod;
 use rust_trainer::LayerSpec;
@@ -145,18 +145,27 @@ impl Default for RunState {
 
 #[allow(clippy::large_enum_variant)]
 enum BatchSource {
-    InMemory { tokens: Vec<i64>, cursor: usize },
-    Sharded { stream: ShardedTokenStream, packed: bool },
-    ShardedMultiWorker { batcher: MultiWorkerShardedBatcher },
+    InMemory {
+        tokens: Vec<i64>,
+        cursor: usize,
+    },
+    Sharded {
+        stream: ShardedTokenStream,
+        packed: bool,
+    },
+    ShardedMultiWorker {
+        batcher: MultiWorkerShardedBatcher,
+    },
 }
 
 impl BatchSource {
-    fn next_batch(&mut self, batch: usize, seq_len: usize) -> Result<(ndarray::Array2<i64>, ndarray::Array2<i64>), String> {
+    fn next_batch(
+        &mut self,
+        batch: usize,
+        seq_len: usize,
+    ) -> Result<(ndarray::Array2<i64>, ndarray::Array2<i64>), String> {
         match self {
-            BatchSource::InMemory {
-                tokens,
-                cursor,
-            } => {
+            BatchSource::InMemory { tokens, cursor } => {
                 let out = make_batch_from_tokens(tokens, *cursor, batch, seq_len);
                 *cursor = cursor.saturating_add(batch * seq_len);
                 Ok(out)
@@ -207,7 +216,13 @@ fn parse_bool(raw: &str) -> bool {
     matches!(raw, "1" | "true" | "yes" | "y" | "on")
 }
 
-fn scheduled_lr(base_lr: f32, step: usize, total_steps: usize, warmup_steps: usize, min_scale: f32) -> f32 {
+fn scheduled_lr(
+    base_lr: f32,
+    step: usize,
+    total_steps: usize,
+    warmup_steps: usize,
+    min_scale: f32,
+) -> f32 {
     let floor = min_scale.clamp(0.0, 1.0) * base_lr;
     if total_steps == 0 {
         return base_lr;
@@ -484,7 +499,8 @@ fn parse_args() -> Args {
                 i += 2;
             }
             "--early-stopping-patience" if i + 1 < raw.len() => {
-                args.early_stopping_patience = raw[i + 1].parse().unwrap_or(args.early_stopping_patience);
+                args.early_stopping_patience =
+                    raw[i + 1].parse().unwrap_or(args.early_stopping_patience);
                 i += 2;
             }
             "--grad-clip-norm" if i + 1 < raw.len() => {
@@ -516,9 +532,8 @@ fn parse_args() -> Args {
                 i += 2;
             }
             "--gradient-surgery-epsilon" if i + 1 < raw.len() => {
-                args.gradient_surgery_epsilon = raw[i + 1]
-                    .parse()
-                    .unwrap_or(args.gradient_surgery_epsilon);
+                args.gradient_surgery_epsilon =
+                    raw[i + 1].parse().unwrap_or(args.gradient_surgery_epsilon);
                 i += 2;
             }
             "--gradnorm-alpha" if i + 1 < raw.len() => {
@@ -548,7 +563,8 @@ fn parse_surgery_method(raw: &str) -> GradientSurgeryMethod {
 
 fn load_run_state(path: &Path) -> Result<RunState, String> {
     let raw = fs::read_to_string(path).map_err(|err| format!("run_state read failed: {err}"))?;
-    let st: RunState = serde_json::from_str(&raw).map_err(|err| format!("run_state parse failed: {err}"))?;
+    let st: RunState =
+        serde_json::from_str(&raw).map_err(|err| format!("run_state parse failed: {err}"))?;
     if st.version != RUN_STATE_VERSION {
         return Err(format!("unsupported run_state version: {}", st.version));
     }
@@ -599,8 +615,9 @@ fn main() {
             .expect("build train multiworker shard batcher");
             train_source = BatchSource::ShardedMultiWorker { batcher };
         } else {
-            let stream = ShardedTokenStream::from_dir(dir, &args.shard_ext, args.shuffle_shards, args.seed)
-                .expect("build train shard stream");
+            let stream =
+                ShardedTokenStream::from_dir(dir, &args.shard_ext, args.shuffle_shards, args.seed)
+                    .expect("build train shard stream");
             train_source = BatchSource::Sharded {
                 stream,
                 packed: args.packed_sequences,
@@ -620,14 +637,14 @@ fn main() {
                 tokens: val_tokens,
                 cursor: 0,
             });
-            train_source = BatchSource::InMemory {
-                tokens,
-                cursor: 0,
-            };
+            train_source = BatchSource::InMemory { tokens, cursor: 0 };
         } else {
             let ratio = args.val_ratio.clamp(0.0, 0.5);
             let raw_split = ((tokens.len() as f32) * (1.0 - ratio)) as usize;
-            let split = raw_split.clamp(args.seq_len + 2, tokens.len().saturating_sub(args.seq_len + 2));
+            let split = raw_split.clamp(
+                args.seq_len + 2,
+                tokens.len().saturating_sub(args.seq_len + 2),
+            );
             let train_tokens = tokens[..split].to_vec();
             let val_tokens = tokens[split..].to_vec();
             train_source = BatchSource::InMemory {
@@ -668,9 +685,13 @@ fn main() {
             .expect("build val multiworker shard batcher");
             val_source = Some(BatchSource::ShardedMultiWorker { batcher });
         } else {
-            let stream =
-                ShardedTokenStream::from_dir(dir, &args.shard_ext, args.shuffle_shards, args.seed ^ 0x11)
-                    .expect("build val shard stream");
+            let stream = ShardedTokenStream::from_dir(
+                dir,
+                &args.shard_ext,
+                args.shuffle_shards,
+                args.seed ^ 0x11,
+            )
+            .expect("build val shard stream");
             val_source = Some(BatchSource::Sharded {
                 stream,
                 packed: args.packed_sequences,
@@ -746,16 +767,16 @@ fn main() {
     let mut stopped_early = false;
 
     if let Some(st) = restored_state {
-            train_source.set_cursor(st.train_cursor);
-            let _ = train_source.restore_sharded_state(st.train_sharded);
-            if let Some(ref mut vsrc) = val_source {
-                vsrc.set_cursor(st.val_cursor);
-                let _ = vsrc.restore_sharded_state(st.val_sharded);
-            }
-            if let Some(v) = st.best_val_loss {
-                best_val = v;
-            }
-            no_improve = st.no_improve;
+        train_source.set_cursor(st.train_cursor);
+        let _ = train_source.restore_sharded_state(st.train_sharded);
+        if let Some(ref mut vsrc) = val_source {
+            vsrc.set_cursor(st.val_cursor);
+            let _ = vsrc.restore_sharded_state(st.val_sharded);
+        }
+        if let Some(v) = st.best_val_loss {
+            best_val = v;
+        }
+        no_improve = st.no_improve;
     }
 
     for local_step in 0..args.steps {
@@ -804,7 +825,9 @@ fn main() {
         }
 
         if local_step % args.save_every == 0 || is_last {
-            trainer.save_checkpoint(&ckpt_path).expect("save checkpoint");
+            trainer
+                .save_checkpoint(&ckpt_path)
+                .expect("save checkpoint");
         }
 
         let do_val = val_source.is_some() && (local_step % args.val_every == 0 || is_last);
@@ -831,7 +854,8 @@ fn main() {
                 .append(true)
                 .open(&metrics_path)
                 .expect("open metrics jsonl");
-            writeln!(f, "{}", serde_json::to_string(&val_rec).unwrap()).expect("append val metrics line");
+            writeln!(f, "{}", serde_json::to_string(&val_rec).unwrap())
+                .expect("append val metrics line");
 
             if val_loss < best_val {
                 best_val = val_loss;
@@ -870,7 +894,11 @@ fn main() {
                 train_multiworker,
                 val_sharded,
                 val_multiworker,
-                best_val_loss: if best_val.is_finite() { Some(best_val) } else { None },
+                best_val_loss: if best_val.is_finite() {
+                    Some(best_val)
+                } else {
+                    None
+                },
                 no_improve,
             };
             let state_json = serde_json::to_value(run_state).expect("serialize run_state");

@@ -97,7 +97,10 @@ pub fn ssm_scan_forward_simd(
     let seq_len = bs.shape()[0];
     let d_state = bs.shape()[1];
     let d_model = delta.shape()[1];
-    assert!(d_state.is_multiple_of(LANES), "d_state must be multiple of 8");
+    assert!(
+        d_state.is_multiple_of(LANES),
+        "d_state must be multiple of 8"
+    );
 
     let bs_s = bs.as_slice().expect("bs must be contiguous");
     let cs_s = cs.as_slice().expect("cs must be contiguous");
@@ -328,7 +331,10 @@ pub fn ssm_scan_backward_simd(
     let seq_len = bs.shape()[0];
     let d_state = bs.shape()[1];
     let d_model = delta.shape()[1];
-    assert!(d_state.is_multiple_of(LANES), "d_state must be multiple of 8");
+    assert!(
+        d_state.is_multiple_of(LANES),
+        "d_state must be multiple of 8"
+    );
 
     let bs_s = bs.as_slice().expect("bs contiguous");
     let cs_s = cs.as_slice().expect("cs contiguous");
