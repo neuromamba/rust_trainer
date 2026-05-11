@@ -10,7 +10,7 @@ homepage = "https://github.com/neuromamba/rust_trainer"
 documentation = "https://docs.rs/rust_trainer"
 readme = "README.md"
 keywords = ["mamba", "ssm", "trainer", "cpu", "hpn"]
-categories = ["machine-learning", "science", "algorithms"]
+categories = ["science", "algorithms", "command-line-utilities"]
 exclude = ["runs/", "target/"]
 
 [lib]
