@@ -110,7 +110,10 @@ mod tests {
         let bp = array![1.0_f32, 0.0];
         let out = pcgrad(&ff, &bp, 1e-8);
         let dot_after = out.dot(&bp);
-        assert!(dot_after >= -1e-6, "dot after projection should be non-negative");
+        assert!(
+            dot_after >= -1e-6,
+            "dot after projection should be non-negative"
+        );
     }
 
     #[test]

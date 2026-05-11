@@ -30,7 +30,17 @@ fn main() {
     let grad_norm: f32 = grad2d.iter().map(|v| v * v).sum::<f32>().sqrt();
 
     let mut opt = Adam2::zeros(6, 8);
-    adamw_update_2d(&mut hidden2d, &grad2d, &mut opt, 1e-3, 0.9, 0.999, 1e-8, 0.01, 0);
+    adamw_update_2d(
+        &mut hidden2d,
+        &grad2d,
+        &mut opt,
+        1e-3,
+        0.9,
+        0.999,
+        1e-8,
+        0.01,
+        0,
+    );
 
     hidden = hidden2d
         .into_shape_with_order((2, 3, 8))

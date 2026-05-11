@@ -1,5 +1,5 @@
-use rust_trainer::nn::hpn_loss_and_grads;
 use ndarray::Array2;
+use rust_trainer::nn::hpn_loss_and_grads;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -132,7 +132,8 @@ fn main() {
         dprot_linf: linf(&dp_rust_flat, &dp_py),
     };
 
-    fs::write(&diff_out_path, serde_json::to_vec_pretty(&diff).unwrap()).expect("write parity diff");
+    fs::write(&diff_out_path, serde_json::to_vec_pretty(&diff).unwrap())
+        .expect("write parity diff");
 
     println!("Cross-framework parity complete");
     println!("  loss_abs      = {:.8}", diff.loss_abs);

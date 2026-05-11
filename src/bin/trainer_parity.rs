@@ -1,5 +1,6 @@
 use rust_trainer::generic_trainer::{
-    default_trainer_config, make_batch_from_tokens, is_frozen_unchanged, mean_layer_norm, GenericTrainer,
+    default_trainer_config, is_frozen_unchanged, make_batch_from_tokens, mean_layer_norm,
+    GenericTrainer,
 };
 use rust_trainer::{ExpansionPlacement, FreezeSelection, LayerSpec};
 use serde_json::json;

@@ -71,13 +71,14 @@ impl MultiWorkerShardedBatcher {
                 .as_ref()
                 .and_then(|rs| rs.worker_states.get(wid).cloned());
             thread::spawn(move || {
-                let mut stream = match ShardedTokenStream::from_paths(group, shuffle_shards, worker_seed) {
-                    Ok(s) => s,
-                    Err(err) => {
-                        let _ = txc.send(Err(err));
-                        return;
-                    }
-                };
+                let mut stream =
+                    match ShardedTokenStream::from_paths(group, shuffle_shards, worker_seed) {
+                        Ok(s) => s,
+                        Err(err) => {
+                            let _ = txc.send(Err(err));
+                            return;
+                        }
+                    };
                 if let Some(st) = restore_state {
                     if let Err(err) = stream.set_state(st) {
                         let _ = txc.send(Err(format!("restore multi-worker state failed: {err}")));
@@ -153,7 +154,11 @@ impl ShardedTokenStream {
         Self::from_paths(shards, shuffle_shards, seed)
     }
 
-    pub fn from_paths(shards: Vec<PathBuf>, shuffle_shards: bool, seed: u64) -> Result<Self, String> {
+    pub fn from_paths(
+        shards: Vec<PathBuf>,
+        shuffle_shards: bool,
+        seed: u64,
+    ) -> Result<Self, String> {
         if shards.is_empty() {
             return Err("empty shard list".to_string());
         }
@@ -198,7 +203,11 @@ impl ShardedTokenStream {
         self.state.clone()
     }
 
-    pub fn next_batch(&mut self, batch: usize, seq_len: usize) -> Result<(Array2<i64>, Array2<i64>), String> {
+    pub fn next_batch(
+        &mut self,
+        batch: usize,
+        seq_len: usize,
+    ) -> Result<(Array2<i64>, Array2<i64>), String> {
         let mut ids = Array2::<i64>::zeros((batch, seq_len));
         let mut targets = Array2::<i64>::zeros((batch, seq_len));
 
@@ -213,7 +222,11 @@ impl ShardedTokenStream {
         Ok((ids, targets))
     }
 
-    pub fn next_packed_batch(&mut self, batch: usize, seq_len: usize) -> Result<(Array2<i64>, Array2<i64>), String> {
+    pub fn next_packed_batch(
+        &mut self,
+        batch: usize,
+        seq_len: usize,
+    ) -> Result<(Array2<i64>, Array2<i64>), String> {
         let total = batch * seq_len;
         let packed = self.next_window(total + 1)?;
         let mut ids = Array2::<i64>::zeros((batch, seq_len));
@@ -281,7 +294,10 @@ impl ShardedTokenStream {
     }
 }
 
-pub fn max_token_plus_one_from_dir<P: AsRef<Path>>(dir: P, extension_filter: &str) -> Result<usize, String> {
+pub fn max_token_plus_one_from_dir<P: AsRef<Path>>(
+    dir: P,
+    extension_filter: &str,
+) -> Result<usize, String> {
     let shards = list_shards(dir.as_ref(), extension_filter)?;
     let mut max_tok = 0i64;
     for path in &shards {
@@ -325,7 +341,8 @@ fn partition_paths(shards: &[PathBuf], workers: usize) -> Vec<Vec<PathBuf>> {
 }
 
 fn parse_token_file(path: &Path) -> Result<Vec<i64>, String> {
-    let raw = fs::read_to_string(path).map_err(|err| format!("failed to read {}: {err}", path.display()))?;
+    let raw = fs::read_to_string(path)
+        .map_err(|err| format!("failed to read {}: {err}", path.display()))?;
     let mut out = Vec::new();
     for part in raw.split_whitespace() {
         let parsed = part
@@ -382,7 +399,11 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("a.txt"), "1 2 3 4 5 6 7 8 9 10 11 12 13 14").unwrap();
-        fs::write(dir.join("b.txt"), "15 16 17 18 19 20 21 22 23 24 25 26 27 28").unwrap();
+        fs::write(
+            dir.join("b.txt"),
+            "15 16 17 18 19 20 21 22 23 24 25 26 27 28",
+        )
+        .unwrap();
 
         let mut m =
             MultiWorkerShardedBatcher::from_dir(&dir, "txt", true, 23, 2, 4, 2, 4, true, None)

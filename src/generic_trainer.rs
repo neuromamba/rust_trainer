@@ -1,10 +1,12 @@
 use crate::layer::{backward as layer_backward, forward_with_cache, LayerForwardCache, LayerGrads};
-use crate::loss::{cagradstep, gradnorm_ff_scale, pcgrad, GradientSurgeryConfig, GradientSurgeryMethod};
+use crate::loss::{
+    cagradstep, gradnorm_ff_scale, pcgrad, GradientSurgeryConfig, GradientSurgeryMethod,
+};
 use crate::nn::{hpn_loss_and_grad_z, hpn_loss_and_grads, layer_norm_backward, layer_norm_forward};
 use crate::optim::{adamw_update_1d, adamw_update_2d, Adam1, Adam2};
 use crate::trainer::{
-    expand_layers_in_place, resolve_freeze_indices, AdamWConfig, ExpansionConfig, ExpansionPlacement,
-    FreezeSelection, LayerSpec, MambaLayerParams, TrainerParams,
+    expand_layers_in_place, resolve_freeze_indices, AdamWConfig, ExpansionConfig,
+    ExpansionPlacement, FreezeSelection, LayerSpec, MambaLayerParams, TrainerParams,
 };
 use ndarray::{Array1, Array2, Array3};
 use rand::rngs::StdRng;
@@ -172,8 +174,10 @@ impl GenericTrainer {
 
     pub fn load_checkpoint<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let bytes = fs::read(path).map_err(|err| format!("checkpoint read failed: {err}"))?;
-        if let Ok((decoded, _bytes_read)) =
-            bincode::serde::decode_from_slice::<GenericTrainerCheckpoint, _>(&bytes, bincode::config::standard())
+        if let Ok((decoded, _bytes_read)) = bincode::serde::decode_from_slice::<
+            GenericTrainerCheckpoint,
+            _,
+        >(&bytes, bincode::config::standard())
         {
             if decoded.version != GENERIC_TRAINER_CKPT_VERSION {
                 return Err(format!(
@@ -225,7 +229,11 @@ impl GenericTrainer {
                 continue;
             }
             let cache = &caches[li];
-            let (b, t, d) = (cache.x_in.shape()[0], cache.x_in.shape()[1], cache.x_in.shape()[2]);
+            let (b, t, d) = (
+                cache.x_in.shape()[0],
+                cache.x_in.shape()[1],
+                cache.x_in.shape()[2],
+            );
             let denom = (b * t) as f32;
             let mut h_pos = Array1::<f32>::zeros(d);
             let mut h_neg = Array1::<f32>::zeros(d);
@@ -302,7 +310,8 @@ impl GenericTrainer {
             .into_shape_with_order((batch * seq_len, d_model))
             .expect("flatten ln output");
         let tgt_flat = targets.iter().copied().collect::<Vec<_>>();
-        let (loss, dz_flat, mut d_prototypes) = hpn_loss_and_grads(z_flat.view(), &tgt_flat, &self.prototypes);
+        let (loss, dz_flat, mut d_prototypes) =
+            hpn_loss_and_grads(z_flat.view(), &tgt_flat, &self.prototypes);
         let dx_ln = dz_flat
             .into_shape_with_order((batch, seq_len, d_model))
             .expect("reshape dz");
@@ -609,7 +618,11 @@ impl GenericTrainer {
     }
 
     pub fn layer_l2_norms(&self) -> Vec<f32> {
-        self.params.layers.iter().map(MambaLayerParams::l2_norm).collect()
+        self.params
+            .layers
+            .iter()
+            .map(MambaLayerParams::l2_norm)
+            .collect()
     }
 }
 
@@ -683,8 +696,16 @@ fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::rename(&tmp_path, path).map_err(|err| format!("atomic checkpoint rename failed: {err}"))
 }
 
-pub fn make_batch_from_tokens(tokens: &[i64], cursor: usize, batch: usize, seq_len: usize) -> (Array2<i64>, Array2<i64>) {
-    assert!(tokens.len() > seq_len + 1, "token stream too short for seq_len");
+pub fn make_batch_from_tokens(
+    tokens: &[i64],
+    cursor: usize,
+    batch: usize,
+    seq_len: usize,
+) -> (Array2<i64>, Array2<i64>) {
+    assert!(
+        tokens.len() > seq_len + 1,
+        "token stream too short for seq_len"
+    );
     let mut ids = Array2::<i64>::zeros((batch, seq_len));
     let mut targets = Array2::<i64>::zeros((batch, seq_len));
     let max_start = tokens.len() - seq_len - 1;
@@ -699,7 +720,8 @@ pub fn make_batch_from_tokens(tokens: &[i64], cursor: usize, batch: usize, seq_l
 }
 
 pub fn tokenize_int_file(input: &str) -> Result<Vec<i64>, String> {
-    let raw = fs::read_to_string(input).map_err(|err| format!("failed to read token file: {err}"))?;
+    let raw =
+        fs::read_to_string(input).map_err(|err| format!("failed to read token file: {err}"))?;
     let mut out = Vec::new();
     for part in raw.split_whitespace() {
         let parsed = part
@@ -767,9 +789,9 @@ pub fn mean_layer_norm(norms: &[f32]) -> f32 {
 }
 
 pub fn is_frozen_unchanged(before: &[f32], after: &[f32], frozen: &[usize], tol: f32) -> bool {
-    frozen
-        .iter()
-        .all(|idx| (*idx < before.len()) && (*idx < after.len()) && (before[*idx] - after[*idx]).abs() <= tol)
+    frozen.iter().all(|idx| {
+        (*idx < before.len()) && (*idx < after.len()) && (before[*idx] - after[*idx]).abs() <= tol
+    })
 }
 
 pub fn grad_l2_1d(v: &Array1<f32>) -> f32 {

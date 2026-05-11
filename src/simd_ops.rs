@@ -381,7 +381,11 @@ pub fn ssm_scan_backward_simd(
         let bs_row = &bs_s[t * d_state..(t + 1) * d_state];
         let cs_row = &cs_s[t * d_state..(t + 1) * d_state];
         let delta_row = &delta_s[t * d_model..(t + 1) * d_model];
-        let prev_htraj_off = if t == 0 { 0 } else { (t - 1) * d_model * d_state };
+        let prev_htraj_off = if t == 0 {
+            0
+        } else {
+            (t - 1) * d_model * d_state
+        };
         let dxc_row = &mut dx_conv_s[t * d_model..(t + 1) * d_model];
         let dbs_row = &mut d_bs_s[t * d_state..(t + 1) * d_state];
         let ddelta_row = &mut d_delta_s[t * d_model..(t + 1) * d_model];
@@ -463,7 +467,8 @@ mod tests {
         let bs = Array2::from_shape_fn((t, s), |(ti, si)| 0.01 * (ti + si + 1) as f32);
         let cs = Array2::from_shape_fn((t, s), |(ti, si)| 0.02 * (1 + (ti * 3 + si) as i32) as f32);
         let delta = Array2::from_shape_fn((t, d), |(ti, di)| 0.03 * (1 + (ti + di) as i32) as f32);
-        let x_conv = Array2::from_shape_fn((t, d), |(ti, di)| 0.04 * (1 + (ti * 2 + di) as i32) as f32);
+        let x_conv =
+            Array2::from_shape_fn((t, d), |(ti, di)| 0.04 * (1 + (ti * 2 + di) as i32) as f32);
         let a = Array2::from_shape_fn((d, s), |(di, si)| -0.1 + 0.001 * (di * s + si) as f32);
         let d_skip = Array1::from_shape_fn(d, |di| 0.01 * (di + 1) as f32);
 
@@ -513,7 +518,8 @@ mod tests {
         let bs = Array2::from_shape_fn((t, s), |(ti, si)| 0.01 * (ti + si + 1) as f32);
         let cs = Array2::from_shape_fn((t, s), |(ti, si)| 0.02 * (1 + (ti * 3 + si) as i32) as f32);
         let delta = Array2::from_shape_fn((t, d), |(ti, di)| 0.03 * (1 + (ti + di) as i32) as f32);
-        let x_conv = Array2::from_shape_fn((t, d), |(ti, di)| 0.04 * (1 + (ti * 2 + di) as i32) as f32);
+        let x_conv =
+            Array2::from_shape_fn((t, d), |(ti, di)| 0.04 * (1 + (ti * 2 + di) as i32) as f32);
         let a = Array2::from_shape_fn((d, s), |(di, si)| -0.1 + 0.001 * (di * s + si) as f32);
         let d_skip = Array1::from_shape_fn(d, |di| 0.01 * (di + 1) as f32);
         let dy_pre = Array2::from_shape_fn((t, d), |(ti, di)| 0.05 * (1 + (ti + di) as i32) as f32);
@@ -555,7 +561,9 @@ mod tests {
         );
 
         let a_err = (&scalar.grad_a_log - &simd.grad_a_log).mapv(f32::abs).sum();
-        let dskip_err = (&scalar.grad_d_skip - &simd.grad_d_skip).mapv(f32::abs).sum();
+        let dskip_err = (&scalar.grad_d_skip - &simd.grad_d_skip)
+            .mapv(f32::abs)
+            .sum();
         let dbs_err = (&scalar.d_bs - &simd.d_bs).mapv(f32::abs).sum();
         let dcs_err = (&scalar.d_cs - &simd.d_cs).mapv(f32::abs).sum();
         let ddelta_err = (&scalar.d_delta - &simd.d_delta).mapv(f32::abs).sum();

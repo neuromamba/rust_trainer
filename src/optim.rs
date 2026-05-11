@@ -44,7 +44,11 @@ pub fn adamw_update_1d(
 ) {
     let bc1 = 1.0 - b1.powi((step + 1) as i32);
     let bc2 = 1.0 - b2.powi((step + 1) as i32);
-    for ((p_v, &g), (m, v)) in p.iter_mut().zip(grad.iter()).zip(st.m.iter_mut().zip(st.v.iter_mut())) {
+    for ((p_v, &g), (m, v)) in p
+        .iter_mut()
+        .zip(grad.iter())
+        .zip(st.m.iter_mut().zip(st.v.iter_mut()))
+    {
         *m = b1 * *m + (1.0 - b1) * g;
         *v = b2 * *v + (1.0 - b2) * g * g;
         let mhat = *m / bc1;
@@ -68,7 +72,11 @@ pub fn adamw_update_2d(
 ) {
     let bc1 = 1.0 - b1.powi((step + 1) as i32);
     let bc2 = 1.0 - b2.powi((step + 1) as i32);
-    for ((p_v, &g), (m, v)) in p.iter_mut().zip(grad.iter()).zip(st.m.iter_mut().zip(st.v.iter_mut())) {
+    for ((p_v, &g), (m, v)) in p
+        .iter_mut()
+        .zip(grad.iter())
+        .zip(st.m.iter_mut().zip(st.v.iter_mut()))
+    {
         *m = b1 * *m + (1.0 - b1) * g;
         *v = b2 * *v + (1.0 - b2) * g * g;
         let mhat = *m / bc1;
@@ -90,6 +98,9 @@ mod tests {
         let before = p.clone();
         let mut st = Adam1::zeros(3);
         adamw_update_1d(&mut p, &g, &mut st, 1e-3, 0.9, 0.999, 1e-8, 0.01, 0);
-        assert!(p.iter().zip(before.iter()).any(|(a, b)| (a - b).abs() > 0.0));
+        assert!(p
+            .iter()
+            .zip(before.iter())
+            .any(|(a, b)| (a - b).abs() > 0.0));
     }
 }

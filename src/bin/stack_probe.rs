@@ -1,8 +1,8 @@
 use ndarray::Array2;
-use rust_trainer::stack::supervised_residual_step;
-use rust_trainer::trainer::{LayerSpec, MambaLayerParams, TrainerParams};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rust_trainer::stack::supervised_residual_step;
+use rust_trainer::trainer::{LayerSpec, MambaLayerParams, TrainerParams};
 use serde_json::json;
 
 fn main() {
@@ -24,7 +24,8 @@ fn main() {
     let ids = Array2::from_shape_fn((2, 6), |(b, t)| ((b * 6 + t) % 32) as i64);
     let targets = Array2::from_shape_fn((2, 6), |(b, t)| ((b * 6 + t + 1) % 32) as i64);
     let frozen_before = params.layers[0].out_proj_w.clone();
-    let stats = supervised_residual_step(&mut params, &prototypes, &ids, &targets, 1e-3, &[0], false);
+    let stats =
+        supervised_residual_step(&mut params, &prototypes, &ids, &targets, 1e-3, &[0], false);
     let frozen_unchanged = params.layers[0].out_proj_w == frozen_before;
 
     let out = json!({

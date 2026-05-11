@@ -114,7 +114,11 @@ mod tests {
 
     #[test]
     fn supervised_step_runs_and_preserves_frozen_layer() {
-        let spec = LayerSpec { d_model: 8, d_state: 8, d_conv: 4 };
+        let spec = LayerSpec {
+            d_model: 8,
+            d_state: 8,
+            d_conv: 4,
+        };
         let mut rng = StdRng::seed_from_u64(19);
         let mut params = TrainerParams {
             embedding: Array2::from_shape_fn((32, 8), |(v, d)| 0.01 * (1 + v + d) as f32),
@@ -127,7 +131,8 @@ mod tests {
         let prototypes = Array2::from_shape_fn((32, 8), |(k, d)| 0.02 * (1 + k + d) as f32);
         let ids = Array2::from_shape_fn((2, 4), |(b, t)| ((b * 4 + t) % 16) as i64);
         let targets = Array2::from_shape_fn((2, 4), |(b, t)| ((b * 4 + t + 1) % 16) as i64);
-        let stats = supervised_residual_step(&mut params, &prototypes, &ids, &targets, 1e-3, &[0], false);
+        let stats =
+            supervised_residual_step(&mut params, &prototypes, &ids, &targets, 1e-3, &[0], false);
         assert!(stats.loss.is_finite());
         assert!(stats.embedding_grad_norm.is_finite());
         assert_eq!(params.layers[0].out_proj_w, frozen_before);

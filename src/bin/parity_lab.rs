@@ -1,11 +1,18 @@
 use rust_trainer::{
-    AdamWConfig, ExpansionConfig, ExpansionPlacement, ExperimentalTrainer, ExperimentalTrainerConfig,
-    FreezeSelection, LayerSpec, TrainerParams,
+    AdamWConfig, ExpansionConfig, ExpansionPlacement, ExperimentalTrainer,
+    ExperimentalTrainerConfig, FreezeSelection, LayerSpec, TrainerParams,
 };
 use serde_json::json;
 use std::env;
 
-fn parse_args() -> (ExpansionPlacement, FreezeSelection, usize, usize, u64, usize) {
+fn parse_args() -> (
+    ExpansionPlacement,
+    FreezeSelection,
+    usize,
+    usize,
+    u64,
+    usize,
+) {
     let mut placement = ExpansionPlacement::Append;
     let mut freeze = FreezeSelection::FirstN(2);
     let mut target = 6usize;
@@ -114,10 +121,12 @@ fn main() {
     for _ in 0..cycles {
         let n = trainer.expanded_layer_count();
         // Dummy activations: pos=+0.5, neg=-0.5 (parity test only cares about freeze)
-        let h_pos: Vec<ndarray::Array1<f32>> =
-            (0..n).map(|_| ndarray::Array1::from_elem(d, 0.5_f32)).collect();
-        let h_neg: Vec<ndarray::Array1<f32>> =
-            (0..n).map(|_| ndarray::Array1::from_elem(d, -0.5_f32)).collect();
+        let h_pos: Vec<ndarray::Array1<f32>> = (0..n)
+            .map(|_| ndarray::Array1::from_elem(d, 0.5_f32))
+            .collect();
+        let h_neg: Vec<ndarray::Array1<f32>> = (0..n)
+            .map(|_| ndarray::Array1::from_elem(d, -0.5_f32))
+            .collect();
         let _ = trainer.train_ff_cycle(&h_pos, &h_neg);
     }
     let after = trainer.layer_norms();

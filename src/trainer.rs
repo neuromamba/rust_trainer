@@ -1,5 +1,5 @@
-use ndarray::{Array1, Array2};
 use crate::loss::pcgrad;
+use ndarray::{Array1, Array2};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use rand_distr::StandardNormal;
@@ -138,11 +138,7 @@ impl MambaLayerParams {
     /// Margin loss for one (h_pos, h_neg) pair.
     /// L = max(0, 1 - (goodness_pos - goodness_neg))
     /// Matches Python compute_ff_loss exactly.
-    pub fn ff_loss_pair(
-        h_pos: &Array1<f32>,
-        h_neg: &Array1<f32>,
-        theta: &Array1<f32>,
-    ) -> f32 {
+    pub fn ff_loss_pair(h_pos: &Array1<f32>, h_neg: &Array1<f32>, theta: &Array1<f32>) -> f32 {
         let g_pos = Self::ff_goodness_activation(h_pos, theta);
         let g_neg = Self::ff_goodness_activation(h_neg, theta);
         (1.0_f32 - (g_pos - g_neg)).max(0.0)
@@ -161,15 +157,22 @@ impl MambaLayerParams {
         }
         let eps = 1e-5_f32;
         let h_pos_mean = h_pos.iter().sum::<f32>() / h_pos.len() as f32;
-        let h_pos_std = (h_pos.iter().map(|v| (v - h_pos_mean).powi(2)).sum::<f32>() / h_pos.len() as f32).sqrt() + eps;
+        let h_pos_std = (h_pos.iter().map(|v| (v - h_pos_mean).powi(2)).sum::<f32>()
+            / h_pos.len() as f32)
+            .sqrt()
+            + eps;
         let h_neg_mean = h_neg.iter().sum::<f32>() / h_neg.len() as f32;
-        let h_neg_std = (h_neg.iter().map(|v| (v - h_neg_mean).powi(2)).sum::<f32>() / h_neg.len() as f32).sqrt() + eps;
+        let h_neg_std = (h_neg.iter().map(|v| (v - h_neg_mean).powi(2)).sum::<f32>()
+            / h_neg.len() as f32)
+            .sqrt()
+            + eps;
         let theta_norm = theta.iter().map(|v| v * v).sum::<f32>().sqrt() + eps;
         // dL/d(theta_i) = -(h_pos_i/h_pos_std - h_neg_i/h_neg_std) / theta_norm
         Array1::from_iter(
-            h_pos.iter().zip(h_neg.iter()).map(|(hp, hn)| {
-                -((hp / h_pos_std) - (hn / h_neg_std)) / theta_norm
-            })
+            h_pos
+                .iter()
+                .zip(h_neg.iter())
+                .map(|(hp, hn)| -((hp / h_pos_std) - (hn / h_neg_std)) / theta_norm),
         )
     }
 }
@@ -221,7 +224,8 @@ impl ExperimentalTrainer {
             &cfg.expansion.placement,
         );
 
-        let frozen_layer_indices = resolve_freeze_indices(&cfg.freeze_selection, params.layers.len());
+        let frozen_layer_indices =
+            resolve_freeze_indices(&cfg.freeze_selection, params.layers.len());
         let frozen_layers = frozen_layer_indices
             .iter()
             .map(|&idx| params.layers[idx].clone())
@@ -283,8 +287,16 @@ impl ExperimentalTrainer {
         h_pos_per_layer: &[Array1<f32>],
         h_neg_per_layer: &[Array1<f32>],
     ) -> Vec<f32> {
-        assert_eq!(h_pos_per_layer.len(), self.params.layers.len(), "h_pos layers mismatch");
-        assert_eq!(h_neg_per_layer.len(), self.params.layers.len(), "h_neg layers mismatch");
+        assert_eq!(
+            h_pos_per_layer.len(),
+            self.params.layers.len(),
+            "h_pos layers mismatch"
+        );
+        assert_eq!(
+            h_neg_per_layer.len(),
+            self.params.layers.len(),
+            "h_neg layers mismatch"
+        );
 
         let mut losses = Vec::with_capacity(self.params.layers.len());
         for idx in 0..self.params.layers.len() {
@@ -324,13 +336,25 @@ impl ExperimentalTrainer {
         cadence_steps: usize,
         pcgrad_epsilon: f32,
     ) -> CadencedStepStats {
-        assert_eq!(h_pos_per_layer.len(), self.params.layers.len(), "h_pos layers mismatch");
-        assert_eq!(h_neg_per_layer.len(), self.params.layers.len(), "h_neg layers mismatch");
+        assert_eq!(
+            h_pos_per_layer.len(),
+            self.params.layers.len(),
+            "h_pos layers mismatch"
+        );
+        assert_eq!(
+            h_neg_per_layer.len(),
+            self.params.layers.len(),
+            "h_neg layers mismatch"
+        );
 
         let bp_due = cadence_steps > 0 && (self.step + 1).is_multiple_of(cadence_steps);
         if bp_due {
             let bp = bp_grads_per_layer.expect("bp gradients required on cadence step");
-            assert_eq!(bp.len(), self.params.layers.len(), "bp grads layers mismatch");
+            assert_eq!(
+                bp.len(),
+                self.params.layers.len(),
+                "bp grads layers mismatch"
+            );
         }
 
         let mut ff_losses = Vec::with_capacity(self.params.layers.len());
@@ -358,9 +382,7 @@ impl ExperimentalTrainer {
 
             let bp_grad = if bp_due {
                 bp_updates_applied += 1;
-                bp_grads_per_layer
-                    .expect("bp gradients required on cadence step")[idx]
-                    .clone()
+                bp_grads_per_layer.expect("bp gradients required on cadence step")[idx].clone()
             } else {
                 Array1::zeros(theta.len())
             };
@@ -393,7 +415,11 @@ impl ExperimentalTrainer {
     }
 
     pub fn layer_norms(&self) -> Vec<f32> {
-        self.params.layers.iter().map(MambaLayerParams::l2_norm).collect()
+        self.params
+            .layers
+            .iter()
+            .map(MambaLayerParams::l2_norm)
+            .collect()
     }
 }
 
@@ -417,7 +443,10 @@ pub fn expand_layers_in_place(
     target_num_layers: usize,
     placement: &ExpansionPlacement,
 ) {
-    assert!(target_num_layers >= base_layers.len(), "target layers must be >= base layers");
+    assert!(
+        target_num_layers >= base_layers.len(),
+        "target layers must be >= base layers"
+    );
     let base_count = base_layers.len();
     let new_count = target_num_layers - base_count;
     if new_count == 0 {
@@ -500,7 +529,10 @@ mod tests {
         }
     }
 
-    fn cfg_with(placement: ExpansionPlacement, freeze: FreezeSelection) -> ExperimentalTrainerConfig {
+    fn cfg_with(
+        placement: ExpansionPlacement,
+        freeze: FreezeSelection,
+    ) -> ExperimentalTrainerConfig {
         ExperimentalTrainerConfig {
             vocab_size: 64,
             layer_spec: spec(),
@@ -593,8 +625,14 @@ mod tests {
         trainer.save_checkpoint(&ckpt).unwrap();
         let loaded = ExperimentalTrainer::load_checkpoint(&ckpt).unwrap();
         assert_eq!(trainer.step, loaded.step);
-        assert_eq!(trainer.expanded_layer_count(), loaded.expanded_layer_count());
-        assert_eq!(trainer.frozen_layer_indices(), loaded.frozen_layer_indices());
+        assert_eq!(
+            trainer.expanded_layer_count(),
+            loaded.expanded_layer_count()
+        );
+        assert_eq!(
+            trainer.frozen_layer_indices(),
+            loaded.frozen_layer_indices()
+        );
         let _ = std::fs::remove_file(&ckpt);
     }
 
