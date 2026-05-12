@@ -5,6 +5,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-05-12
+
+### Changed
+- Updated release pipeline to build PyPI wheels across Python 3.11, 3.12, and 3.13.
+- Hardened maturin invocation to use explicit interpreter selection (`-i`) instead of environment auto-discovery.
+- Updated maturin action version pin to a valid tagged release (`v1.13.3`).
+- Restricted PyPI upload stage to download and publish only wheel artifacts (`wheels-*`).
+- Updated wheel artifact naming to include OS, target, and Python version for collision-free aggregation.
+
 ## [0.1.3] — 2026-05-11
 
 ### Changed
@@ -55,6 +64,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 - **CI workflow**: lint, test, build on push/PR
 - **Release workflow**: multi-arch binary build, GitHub Release, optional crates.io publish
 
-[Unreleased]: https://github.com/neuromamba/rust_trainer/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/neuromamba/rust_trainer/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/neuromamba/rust_trainer/releases/tag/v0.1.4
 [0.1.3]: https://github.com/neuromamba/rust_trainer/releases/tag/v0.1.3
 [0.1.0]: https://github.com/neuromamba/rust_trainer/releases/tag/v0.1.0
