@@ -2,6 +2,7 @@
 
 [![CI](https://img.shields.io/badge/CI-ready-brightgreen)](.github/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/rust_trainer.svg)](https://crates.io/crates/rust_trainer)
+[![PyPI](https://img.shields.io/pypi/v/rust-trainer.svg)](https://pypi.org/project/rust-trainer/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 A CPU-first Rust training package implementing a **Mamba SSM + Hyperspherical Prototype Network (HPN)** architecture.
