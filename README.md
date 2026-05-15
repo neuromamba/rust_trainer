@@ -62,6 +62,57 @@ Operational note:
 
 Detailed roadmap and release milestones are tracked in [roadmap.md](roadmap.md).
 
+## CPU speed benchmarks (laptop reference)
+
+Measured on this environment:
+
+- CPU: Intel(R) Core(TM) Ultra 7 165H
+- Logical CPUs: 22 (11 cores, 2 threads/core)
+- Memory: 31 GiB
+- OS: Linux 6.6.87.2-microsoft-standard-WSL2
+- Binary: `./target/release/train_generic`
+- Steps per run: 120
+
+These are smoke benchmarks for relative comparison (not a full convergence benchmark).
+
+### Matrix A: batch/sequence profile (`d_model=512`, `layers=2`)
+
+| config | batch | seq | real_s | step_s | token_s |
+|---|---:|---:|---:|---:|---:|
+| b16_s128_d512_l2 | 16 | 128 | 40.83 | 2.94 | 6019.10 |
+| b16_s64_d512_l2 | 16 | 64 | 24.51 | 4.90 | 5013.46 |
+| b8_s128_d512_l2 | 8 | 128 | 26.17 | 4.59 | 4695.45 |
+| b16_s32_d512_l2 | 16 | 32 | 15.70 | 7.64 | 3913.38 |
+| b4_s128_d512_l2 | 4 | 128 | 16.69 | 7.19 | 3681.25 |
+| b8_s64_d512_l2 | 8 | 64 | 18.02 | 6.66 | 3409.54 |
+| b8_s32_d512_l2 | 8 | 32 | 10.78 | 11.13 | 2849.72 |
+| b4_s64_d512_l2 | 4 | 64 | 11.31 | 10.61 | 2716.18 |
+| b4_s32_d512_l2 | 4 | 32 | 7.74 | 15.50 | 1984.50 |
+
+Best in Matrix A: `b16_s128_d512_l2` at `6019.10` tokens/s.
+
+### Matrix B: model/layer profile (`batch=8`, `seq=64`)
+
+| config | d_model | layers | real_s | step_s | token_s |
+|---|---:|---:|---:|---:|---:|
+| b8_s64_d256_l2 | 256 | 2 | 7.56 | 15.87 | 8126.98 |
+| b8_s64_d256_l4 | 256 | 4 | 11.05 | 10.86 | 5560.18 |
+| b8_s64_d256_l6 | 256 | 6 | 15.35 | 7.82 | 4002.61 |
+| b8_s64_d512_l2 | 512 | 2 | 17.80 | 6.74 | 3451.69 |
+| b8_s64_d256_l8 | 256 | 8 | 18.74 | 6.40 | 3278.55 |
+| b8_s64_d256_l10 | 256 | 10 | 22.07 | 5.44 | 2783.87 |
+| b8_s64_d512_l4 | 512 | 4 | 26.54 | 4.52 | 2315.00 |
+| b8_s64_d512_l6 | 512 | 6 | 35.70 | 3.36 | 1721.01 |
+| b8_s64_d512_l8 | 512 | 8 | 42.66 | 2.81 | 1440.23 |
+| b8_s64_d512_l10 | 512 | 10 | 50.38 | 2.38 | 1219.53 |
+
+Best in Matrix B: `b8_s64_d256_l2` at `8126.98` tokens/s.
+
+Raw benchmark CSVs are committed under:
+
+- `runs/bench_matrix_a/results.csv`
+- `runs/bench_matrix_b/results.csv`
+
 ---
 
 ## Design philosophy
