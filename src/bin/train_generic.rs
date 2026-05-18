@@ -14,6 +14,7 @@ use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 const RUN_STATE_VERSION: u32 = 1;
 
@@ -61,6 +62,7 @@ struct Args {
     gradient_surgery_epsilon: f32,
     gradnorm_alpha: f32,
     cagrad_lambda: f32,
+    human_log: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -328,7 +330,7 @@ fn parse_args() -> Args {
         d_state: 16,
         d_conv: 4,
         placement: "specific:1,3,4,5".to_string(),
-        freeze: "first:2".to_string(),
+        freeze: "indices:".to_string(),
         lr: 1e-4,
         freeze_embedding: false,
         token_file: None,
@@ -356,6 +358,7 @@ fn parse_args() -> Args {
         gradient_surgery_epsilon: 1e-8,
         gradnorm_alpha: 0.2,
         cagrad_lambda: 1.0,
+        human_log: false,
     };
 
     let raw = env::args().skip(1).collect::<Vec<_>>();
@@ -543,6 +546,10 @@ fn parse_args() -> Args {
             "--cagrad-lambda" if i + 1 < raw.len() => {
                 args.cagrad_lambda = raw[i + 1].parse().unwrap_or(args.cagrad_lambda);
                 i += 2;
+            }
+            "--human-log" => {
+                args.human_log = true;
+                i += 1;
             }
             _ => {
                 i += 1;
@@ -765,6 +772,7 @@ fn main() {
     let mut best_val = f32::INFINITY;
     let mut no_improve = 0usize;
     let mut stopped_early = false;
+    let mut last_val_loss: Option<f32> = None;
 
     if let Some(st) = restored_state {
         train_source.set_cursor(st.train_cursor);
@@ -778,6 +786,8 @@ fn main() {
         }
         no_improve = st.no_improve;
     }
+
+    let train_start = Instant::now();
 
     for local_step in 0..args.steps {
         trainer.cfg.adamw.lr = scheduled_lr(
@@ -815,7 +825,31 @@ fn main() {
                 "layers": trainer.params.layers.len(),
                 "frozen": trainer.frozen_layer_indices,
             });
-            println!("{}", serde_json::to_string_pretty(&rec).unwrap());
+            if args.human_log {
+                let elapsed_s = train_start.elapsed().as_secs_f64().max(1e-9);
+                let sps = stats.step as f64 / elapsed_s;
+                let tok_s = sps * (args.batch_size * args.seq_len) as f64;
+                let learn = if stats.ff_updates_applied > 0 || stats.bp_updates_applied > 0 {
+                    "yes"
+                } else {
+                    "no"
+                };
+                let val_field = last_val_loss
+                    .map(|v| format!(" val={v:.4}"))
+                    .unwrap_or_default();
+                println!(
+                    "step {}/{} train={:.4}{} learn={} sps={:.2} tok/s={:.0}",
+                    stats.step,
+                    args.steps,
+                    stats.loss,
+                    val_field,
+                    learn,
+                    sps,
+                    tok_s
+                );
+            } else {
+                println!("{}", serde_json::to_string_pretty(&rec).unwrap());
+            }
             let mut f = OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -848,7 +882,12 @@ fn main() {
                 "val_loss": val_loss,
                 "best_val_loss": best_val,
             });
-            println!("{}", serde_json::to_string_pretty(&val_rec).unwrap());
+            last_val_loss = Some(val_loss);
+            if args.human_log {
+                // Keep console output minimal; detailed validation history stays in metrics.jsonl.
+            } else {
+                println!("{}", serde_json::to_string_pretty(&val_rec).unwrap());
+            }
             let mut f = OpenOptions::new()
                 .create(true)
                 .append(true)

@@ -7,6 +7,23 @@
 
 A CPU-first Rust training package implementing a **Mamba SSM + Hyperspherical Prototype Network (HPN)** architecture.
 
+## Scope in this directory
+
+This `rust_trainer_lab/` directory is for trainer-engine concerns only:
+
+- trainer binary/library behavior,
+- kernels and numerical/runtime implementation,
+- checkpointing/resume and data-ingestion internals,
+- trainer-centric throughput/stability benchmarking.
+
+Out of scope here:
+
+- NeuroMamba release orchestration (`R0`-`R5`),
+- pre-release capacity benchmarking policy and claim-validation narrative,
+- cross-phase experiment governance.
+
+Those belong in the main NeuroMamba repository docs under `docs/`.
+
 This is a concrete, working reference implementation — not a blank framework. The model is a stack of Mamba selective state-space layers with an HPN cosine-distance output head and learnable prototype matrix. Teams can use it as-is or fork and replace the layer/loss internals for their own architecture.
 
 It works as both:

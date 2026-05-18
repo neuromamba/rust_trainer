@@ -2,6 +2,22 @@
 
 This roadmap tracks the path from current production-candidate status to full production-grade training.
 
+## Scope boundary
+
+This file tracks trainer-engine roadmap items only.
+
+Out of scope for this file:
+
+- NeuroMamba pre-release capacity benchmarking phases,
+- release-phase orchestration (`R0`-`R5`),
+- high-level project claim-validation reporting.
+
+For those items, use NeuroMamba docs:
+
+- `docs/poc-roadmap.md`
+- `docs/training.md`
+- `CAPACITY_BENCHMARK.md`
+
 ## Current baseline
 
 Completed:
