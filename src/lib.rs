@@ -12,7 +12,7 @@ pub mod trainer;
 pub mod bindings;
 
 pub use loss::{
-    cagradstep, gradnorm_ff_scale, pcgrad, GradientSurgeryConfig, GradientSurgeryMethod,
+    cagradstep, gradnorm_ff_scale, orthograd, pcgrad, GradientSurgeryConfig, GradientSurgeryMethod,
 };
 pub use trainer::{
     AdamWConfig, CadencedStepStats, ExpansionConfig, ExpansionPlacement, ExperimentalTrainer,

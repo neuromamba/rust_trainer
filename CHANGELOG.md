@@ -5,10 +5,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 
 ## [Unreleased]
 
-## [0.2.0] — 2026-05-18
+## [0.2.0] — 2026-05-19
+
+### Added
+- `OrthoGrad` gradient surgery method (`GradientSurgeryMethod::OrthoGrad`): unconditionally projects FF gradients perpendicular to BP gradients — `g_ff' = g_ff - (dot(g_ff, g_bp) / (‖g_bp‖² + ε)) · g_bp` — providing stronger FF/BP separation than PCGrad, which only removes conflicting components.
+- `orthograd()` kernel in `loss.rs`; exported from `lib.rs`.
+- `"orthograd"` accepted by `parse_surgery_method` in `train_generic` CLI (`--gradient-surgery-method orthograd`).
 
 ### Changed
-- Version bump only: `0.1.4` -> `0.2.0`.
+- Version bump: `0.1.4` → `0.2.0`.
 
 ## [0.1.4] — 2026-05-12
 

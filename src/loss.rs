@@ -9,6 +9,8 @@ pub enum GradientSurgeryMethod {
     GradNorm,
     #[serde(rename = "cagradstep")]
     CAGradStep,
+    #[serde(rename = "orthograd")]
+    OrthoGrad,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -69,6 +71,20 @@ pub fn gradnorm_ff_scale(
         .sum::<f32>()
         .sqrt();
     (alpha * disagreement).exp()
+}
+
+/// Full orthogonalization of FF gradients against BP gradients.
+///
+/// Unconditionally removes the FF component parallel to BP:
+/// grad_ff' = grad_ff - (dot(grad_ff, grad_bp) / (||grad_bp||^2 + eps)) * grad_bp
+///
+/// Stronger than PCGrad: separation holds even when gradients are aligned,
+/// ensuring the FF update never interferes with the BP gradient direction.
+pub fn orthograd(grad_ff: &Array1<f32>, grad_bp: &Array1<f32>, epsilon: f32) -> Array1<f32> {
+    assert_eq!(grad_ff.len(), grad_bp.len(), "orthograd shape mismatch");
+    let bp_norm_sq = grad_bp.dot(grad_bp) + epsilon.max(0.0);
+    let dot = grad_ff.dot(grad_bp);
+    grad_ff - &(grad_bp * (dot / bp_norm_sq))
 }
 
 /// Conflict-averse step: stronger-than-PCGrad conflict removal.

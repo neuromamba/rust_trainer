@@ -562,6 +562,7 @@ fn parse_args() -> Args {
 fn parse_surgery_method(raw: &str) -> GradientSurgeryMethod {
     match raw.to_ascii_lowercase().as_str() {
         "pcgrad" => GradientSurgeryMethod::PcGrad,
+        "orthograd" => GradientSurgeryMethod::OrthoGrad,
         "gradnorm" => GradientSurgeryMethod::GradNorm,
         "cagradstep" | "cagrad" => GradientSurgeryMethod::CAGradStep,
         _ => GradientSurgeryMethod::PcGrad,

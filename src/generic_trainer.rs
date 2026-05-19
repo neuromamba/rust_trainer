@@ -1,6 +1,6 @@
 use crate::layer::{backward as layer_backward, forward_with_cache, LayerForwardCache, LayerGrads};
 use crate::loss::{
-    cagradstep, gradnorm_ff_scale, pcgrad, GradientSurgeryConfig, GradientSurgeryMethod,
+    cagradstep, gradnorm_ff_scale, orthograd, pcgrad, GradientSurgeryConfig, GradientSurgeryMethod,
 };
 use crate::nn::{hpn_loss_and_grad_z, hpn_loss_and_grads, layer_norm_backward, layer_norm_forward};
 use crate::optim::{adamw_update_1d, adamw_update_2d, Adam1, Adam2};
@@ -360,6 +360,9 @@ impl GenericTrainer {
             let ff_after_surgery = match self.cfg.gradient_surgery.method {
                 GradientSurgeryMethod::PcGrad => {
                     pcgrad(ff_grad, &bp_grad, self.cfg.gradient_surgery.epsilon)
+                }
+                GradientSurgeryMethod::OrthoGrad => {
+                    orthograd(ff_grad, &bp_grad, self.cfg.gradient_surgery.epsilon)
                 }
                 GradientSurgeryMethod::GradNorm => {
                     let scale = gradnorm_ff_scale(
