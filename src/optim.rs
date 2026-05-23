@@ -54,7 +54,7 @@ pub fn adamw_update_1d(
         *v = b2 * *v + (1.0 - b2) * g * g;
         let mhat = *m / bc1;
         let vhat = *v / bc2;
-        let upd = mhat / (vhat.sqrt() + eps);
+        let upd = (mhat / (vhat.sqrt() + eps)).clamp(-1e4, 1e4);
         let old = *p_v;
         *p_v = old - lr * (upd + wd * old);
     }
@@ -83,7 +83,7 @@ pub fn adamw_update_2d(
         *v = b2 * *v + (1.0 - b2) * g * g;
         let mhat = *m / bc1;
         let vhat = *v / bc2;
-        let upd = mhat / (vhat.sqrt() + eps);
+        let upd = (mhat / (vhat.sqrt() + eps)).clamp(-1e4, 1e4);
         let old = *p_v;
         *p_v = old - lr * (upd + wd * old);
     }

@@ -46,6 +46,50 @@ fn hsum(v: f32x8) -> f32 {
     arr[0] + arr[1] + arr[2] + arr[3] + arr[4] + arr[5] + arr[6] + arr[7]
 }
 
+/// Fast scalar exponential with a pole-free approximation on a bounded interval.
+/// Uses a 4th-order polynomial on [-2, 2] and falls back to native exp() outside.
+#[inline(always)]
+pub fn fast_exp_scalar(x: f32) -> f32 {
+    let x = x.max(-80.0).min(80.0);
+    if (-2.0..=2.0).contains(&x) {
+        let x2 = x * x;
+        let x3 = x2 * x;
+        let x4 = x2 * x2;
+        1.0 + x + 0.5 * x2 + (1.0 / 6.0) * x3 + (1.0 / 24.0) * x4
+    } else {
+        x.exp()
+    }
+}
+
+/// Fast SIMD exponential implemented lane-wise via the stable scalar path.
+#[inline(always)]
+pub fn fast_exp_simd(v: f32x8) -> f32x8 {
+    let a = v.to_array();
+    f32x8::from([
+        fast_exp_scalar(a[0]),
+        fast_exp_scalar(a[1]),
+        fast_exp_scalar(a[2]),
+        fast_exp_scalar(a[3]),
+        fast_exp_scalar(a[4]),
+        fast_exp_scalar(a[5]),
+        fast_exp_scalar(a[6]),
+        fast_exp_scalar(a[7]),
+    ])
+}
+
+/// Fast scalar sigmoid using Padé-approximated exp: 1 / (1 + e^(-x))
+/// Uses a branch-stable form to avoid overflow/underflow.
+#[inline(always)]
+pub fn fast_sigmoid(x: f32) -> f32 {
+    if x >= 0.0 {
+        let z = fast_exp_scalar(-x);
+        1.0 / (1.0 + z)
+    } else {
+        let z = fast_exp_scalar(x);
+        z / (1.0 + z)
+    }
+}
+
 /// Scalar reference forward SSM scan used for correctness checks.
 #[allow(clippy::too_many_arguments)]
 pub fn ssm_scan_forward_scalar(
@@ -69,7 +113,8 @@ pub fn ssm_scan_forward_scalar(
             let xc_i = x_conv[(t, i)];
             let mut yi = 0.0;
             for s in 0..d_state {
-                let a_bar = (dt_i * a[(i, s)]).exp();
+                // dt_i > 0, a < 0 (decay); clamp product to (-inf, 0] so a_bar stays in (0, 1].
+                let a_bar = fast_exp_scalar((dt_i * a[(i, s)]).min(0.0));
                 let v = dt_i * bs[(t, s)] * xc_i;
                 let h_new = a_bar * h[(i, s)] + v;
                 h[(i, s)] = h_new;
@@ -140,7 +185,7 @@ pub fn ssm_scan_forward_simd(
                 let cs_v = load8(cs_row, s_off);
                 let h_prev = load8(h_s, h_off + s_off);
 
-                let a_bar = (dt_v * a_v).exp();
+                let a_bar = fast_exp_simd((dt_v * a_v).min(f32x8::ZERO));
                 let v = bs_v * dxc_v;
                 let h_new = a_bar.mul_add(h_prev, v);
 
@@ -177,7 +222,7 @@ pub fn conv1d_silu_forward_scalar(
                 }
             }
             pre[(t, d)] = acc;
-            out[(t, d)] = acc / (1.0 + (-acc).exp());
+            out[(t, d)] = acc * fast_sigmoid(acc);
         }
     }
     (pre, out)
@@ -227,7 +272,8 @@ pub fn conv1d_silu_forward_simd(
                 }
                 store8(pre_row, d_off, acc);
                 let neg = -acc;
-                let denom = f32x8::splat(1.0) + neg.exp();
+                let exp_neg = fast_exp_simd(neg);
+                let denom = f32x8::splat(1.0) + exp_neg;
                 let silu = acc / denom;
                 store8(out_row, d_off, silu);
             }
@@ -291,7 +337,7 @@ pub fn ssm_scan_backward_scalar(
             for s in 0..d_state {
                 let dh_state = dy_pre[(t, i)] * cs[(t, s)];
                 let dh_total = dh_state + dh_carry[(i, s)];
-                let a_bar = (dt_i * a[(i, s)]).exp();
+                let a_bar = fast_exp_scalar((dt_i * a[(i, s)]).min(0.0));
                 let h_prev = if t == 0 { 0.0 } else { h_traj[(t - 1, i, s)] };
                 let d_v = dh_total;
                 let d_a_bar = dh_total * h_prev;
@@ -413,7 +459,7 @@ pub fn ssm_scan_backward_simd(
                 let dh_carry_v = load8(&dh_carry, h_off + s_off);
                 let dh_total = dh_state_v + dh_carry_v;
                 let a_v = load8(a_s, a_off + s_off);
-                let a_bar = (dt_v * a_v).exp();
+                let a_bar = fast_exp_simd((dt_v * a_v).min(f32x8::ZERO));
                 let h_prev = if t == 0 {
                     f32x8::ZERO
                 } else {

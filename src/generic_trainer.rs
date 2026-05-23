@@ -306,6 +306,31 @@ impl GenericTrainer {
         }
 
         let (x_ln, ln_cache) = layer_norm_forward(residual.view());
+
+        // Guard: if the forward pass already produced non-finite activations,
+        // skip the backward entirely (no NaN propagation into parameter space).
+        if !residual.iter().all(|v| v.is_finite()) {
+            self.step += 1;
+            return StepStats {
+                step: self.step,
+                loss: f32::NAN,
+                embedding_grad_norm: f32::NAN,
+                prototype_grad_norm: f32::NAN,
+                top_grad_norm: f32::NAN,
+                grad_global_norm: f32::NAN,
+                lr: self.cfg.adamw.lr,
+                ff_loss_mean,
+                bp_applied: true,
+                ff_updates_applied,
+                bp_updates_applied: 0,
+                conflict_layers: 0,
+                surgery_method: format!("{:?}", self.cfg.gradient_surgery.method).to_lowercase(),
+                clipped: false,
+                skipped_update: true,
+                non_finite_detected: true,
+            };
+        }
+
         let z_flat = x_ln
             .clone()
             .into_shape_with_order((batch * seq_len, d_model))
@@ -358,6 +383,7 @@ impl GenericTrainer {
                 conflict_layers += 1;
             }
             let ff_after_surgery = match self.cfg.gradient_surgery.method {
+                GradientSurgeryMethod::None => ff_grad.clone(),
                 GradientSurgeryMethod::PcGrad => {
                     pcgrad(ff_grad, &bp_grad, self.cfg.gradient_surgery.epsilon)
                 }
@@ -403,6 +429,8 @@ impl GenericTrainer {
             if self.cfg.fail_on_non_finite {
                 panic!("non-finite detected during train_step");
             }
+            // Advance step even when update is skipped so cadence/logging do not stall.
+            self.step += 1;
             return StepStats {
                 step: self.step,
                 loss,
@@ -414,7 +442,7 @@ impl GenericTrainer {
                 ff_loss_mean,
                 bp_applied: true,
                 ff_updates_applied,
-                bp_updates_applied: self.params.layers.len() - self.frozen_layer_indices.len(),
+                bp_updates_applied: 0,
                 conflict_layers,
                 surgery_method: format!("{:?}", self.cfg.gradient_surgery.method).to_lowercase(),
                 clipped: false,

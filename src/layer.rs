@@ -1,19 +1,21 @@
 use crate::simd_ops::{
     conv1d_silu_forward_scalar, conv1d_silu_forward_simd, ssm_scan_backward_scalar,
-    ssm_scan_backward_simd, ssm_scan_forward_scalar, ssm_scan_forward_simd, LANES,
+    ssm_scan_backward_simd, ssm_scan_forward_scalar, ssm_scan_forward_simd, fast_sigmoid,
+    fast_exp_scalar, LANES,
 };
 use crate::trainer::MambaLayerParams;
 use ndarray::{s, Array1, Array2, Array3, ArrayView3};
+use rayon::prelude::*;
 
 fn sigmoid(x: f32) -> f32 {
-    1.0 / (1.0 + (-x).exp())
+    fast_sigmoid(x)
 }
 
 fn softplus(x: f32) -> f32 {
     if x > 20.0 {
         x
     } else {
-        (1.0 + x.exp()).ln()
+        (1.0 + fast_exp_scalar(x)).ln()
     }
 }
 
@@ -86,79 +88,98 @@ pub fn forward_with_cache(
 ) -> (Array3<f32>, LayerForwardCache) {
     let (batch, seq_len, d_model) = (x.shape()[0], x.shape()[1], x.shape()[2]);
     let d_state = (layer.x_proj_w.shape()[1] - 1) / 2;
-    let a = layer.a_log.mapv(|v| -v.exp());
+    // a must be negative (state decay); original: -exp(a_log). Preserve sign.
+    let a = layer.a_log.mapv(|v| -fast_exp_scalar(v));
 
     let mut pre_silu_all = Array3::<f32>::zeros((batch, seq_len, d_model));
     let mut x_conv_all = Array3::<f32>::zeros((batch, seq_len, d_model));
-    for b in 0..batch {
-        let x_b = x.slice(s![b, .., ..]);
-        let (pre_b, out_b) = if d_model % LANES == 0 {
-            conv1d_silu_forward_simd(x_b, layer.conv1d_w.view(), layer.conv1d_b.view())
-        } else {
-            conv1d_silu_forward_scalar(x_b, layer.conv1d_w.view(), layer.conv1d_b.view())
-        };
+    
+    // Parallelize first batch loop: conv1d_silu operations are independent per batch
+    let conv_results: Vec<_> = (0..batch)
+        .into_par_iter()
+        .map(|b| {
+            let x_b = x.slice(s![b, .., ..]);
+            if d_model % LANES == 0 {
+                conv1d_silu_forward_simd(x_b, layer.conv1d_w.view(), layer.conv1d_b.view())
+            } else {
+                conv1d_silu_forward_scalar(x_b, layer.conv1d_w.view(), layer.conv1d_b.view())
+            }
+        })
+        .collect();
+    
+    for (b, (pre_b, out_b)) in conv_results.into_iter().enumerate() {
         pre_silu_all.slice_mut(s![b, .., ..]).assign(&pre_b);
         x_conv_all.slice_mut(s![b, .., ..]).assign(&out_b);
     }
 
     let mut per_batch = Vec::with_capacity(batch);
     let mut out = Array3::<f32>::zeros((batch, seq_len, d_model));
-    for b in 0..batch {
-        let x_conv_b = x_conv_all.slice(s![b, .., ..]).to_owned();
-        let xz = x_conv_b.dot(&layer.x_proj_w);
-        let bs = xz.slice(s![.., 0..d_state]).to_owned();
-        let cs = xz.slice(s![.., d_state..2 * d_state]).to_owned();
-        let delta_raw = xz.slice(s![.., 2 * d_state..]).to_owned();
+    
+    // Parallelize second batch loop: SSM and projection operations are independent per batch
+    let batch_results: Vec<_> = (0..batch)
+        .into_par_iter()
+        .map(|b| {
+            let x_conv_b = x_conv_all.slice(s![b, .., ..]).to_owned();
+            let xz = x_conv_b.dot(&layer.x_proj_w);
+            let bs = xz.slice(s![.., 0..d_state]).to_owned();
+            let cs = xz.slice(s![.., d_state..2 * d_state]).to_owned();
+            let delta_raw = xz.slice(s![.., 2 * d_state..]).to_owned();
 
-        let mut pre_dt = delta_raw.dot(&layer.dt_proj_w);
-        for t in 0..seq_len {
-            for i in 0..d_model {
-                pre_dt[(t, i)] += layer.dt_proj_b[i];
+            let mut pre_dt = delta_raw.dot(&layer.dt_proj_w);
+            for t in 0..seq_len {
+                for i in 0..d_model {
+                    pre_dt[(t, i)] += layer.dt_proj_b[i];
+                }
             }
-        }
-        let delta = pre_dt.mapv(softplus);
-        let mut h = Array2::<f32>::zeros((d_model, d_state));
-        let mut h_traj = Array3::<f32>::zeros((seq_len, d_model, d_state));
-        let mut y_pre = Array2::<f32>::zeros((seq_len, d_model));
-        if d_state.is_multiple_of(LANES) {
-            ssm_scan_forward_simd(
-                bs.view(),
-                cs.view(),
-                delta.view(),
-                x_conv_b.view(),
-                a.view(),
-                layer.d_skip.view(),
-                &mut h,
-                &mut h_traj,
-                &mut y_pre,
-            );
-        } else {
-            ssm_scan_forward_scalar(
-                bs.view(),
-                cs.view(),
-                delta.view(),
-                x_conv_b.view(),
-                a.view(),
-                layer.d_skip.view(),
-                &mut h,
-                &mut h_traj,
-                &mut y_pre,
-            );
-        }
+            let delta = pre_dt.mapv(softplus);
+            let mut h = Array2::<f32>::zeros((d_model, d_state));
+            let mut h_traj = Array3::<f32>::zeros((seq_len, d_model, d_state));
+            let mut y_pre = Array2::<f32>::zeros((seq_len, d_model));
+            if d_state.is_multiple_of(LANES) {
+                ssm_scan_forward_simd(
+                    bs.view(),
+                    cs.view(),
+                    delta.view(),
+                    x_conv_b.view(),
+                    a.view(),
+                    layer.d_skip.view(),
+                    &mut h,
+                    &mut h_traj,
+                    &mut y_pre,
+                );
+            } else {
+                ssm_scan_forward_scalar(
+                    bs.view(),
+                    cs.view(),
+                    delta.view(),
+                    x_conv_b.view(),
+                    a.view(),
+                    layer.d_skip.view(),
+                    &mut h,
+                    &mut h_traj,
+                    &mut y_pre,
+                );
+            }
 
-        let yo = y_pre.dot(&layer.out_proj_w);
+            let yo = y_pre.dot(&layer.out_proj_w);
+            let cache_item = LayerForwardCachePerBatch {
+                pre_silu: pre_silu_all.slice(s![b, .., ..]).to_owned(),
+                x_conv: x_conv_b,
+                bs,
+                cs,
+                delta_raw,
+                pre_dt,
+                delta,
+                h_traj,
+                y_pre,
+            };
+            (yo, cache_item)
+        })
+        .collect();
+    
+    for (b, (yo, cache_item)) in batch_results.into_iter().enumerate() {
         out.slice_mut(s![b, .., ..]).assign(&yo);
-        per_batch.push(LayerForwardCachePerBatch {
-            pre_silu: pre_silu_all.slice(s![b, .., ..]).to_owned(),
-            x_conv: x_conv_b,
-            bs,
-            cs,
-            delta_raw,
-            pre_dt,
-            delta,
-            h_traj,
-            y_pre,
-        });
+        per_batch.push(cache_item);
     }
 
     (
@@ -182,92 +203,103 @@ pub fn backward(
     let mut total = LayerGrads::zeros_like(layer);
     let mut dx_in = Array3::<f32>::zeros((batch, seq_len, d_model));
 
-    for b in 0..batch {
-        let cb = &cache.per_batch[b];
-        let dy_b = dy.slice(s![b, .., ..]);
-        let dy_pre = dy_b.dot(&layer.out_proj_w.t());
-        total.out_proj_w += &cb.y_pre.t().dot(&dy_b);
+    let per_batch = (0..batch)
+        .into_par_iter()
+        .map(|b| {
+            let cb = &cache.per_batch[b];
+            let dy_b = dy.slice(s![b, .., ..]);
+            let mut local = LayerGrads::zeros_like(layer);
 
-        let mut dx_conv = Array2::<f32>::zeros((seq_len, d_model));
-        let mut d_cs = Array2::<f32>::zeros((seq_len, d_state));
-        let mut d_bs = Array2::<f32>::zeros((seq_len, d_state));
-        let mut d_delta = Array2::<f32>::zeros((seq_len, d_model));
+            let dy_pre = dy_b.dot(&layer.out_proj_w.t());
+            local.out_proj_w += &cb.y_pre.t().dot(&dy_b);
 
-        let scan = if d_state.is_multiple_of(LANES) {
-            ssm_scan_backward_simd(
-                cb.bs.view(),
-                cb.cs.view(),
-                cb.delta.view(),
-                cb.x_conv.view(),
-                cache.a.view(),
-                layer.d_skip.view(),
-                cb.h_traj.view(),
-                dy_pre.view(),
-            )
-        } else {
-            ssm_scan_backward_scalar(
-                cb.bs.view(),
-                cb.cs.view(),
-                cb.delta.view(),
-                cb.x_conv.view(),
-                cache.a.view(),
-                layer.d_skip.view(),
-                cb.h_traj.view(),
-                dy_pre.view(),
-            )
-        };
-        total.a_log += &scan.grad_a_log;
-        total.d_skip += &scan.grad_d_skip;
-        d_bs.assign(&scan.d_bs);
-        d_cs.assign(&scan.d_cs);
-        d_delta.assign(&scan.d_delta);
-        dx_conv.assign(&scan.dx_conv);
+            let mut dx_conv = Array2::<f32>::zeros((seq_len, d_model));
+            let mut d_cs = Array2::<f32>::zeros((seq_len, d_state));
+            let mut d_bs = Array2::<f32>::zeros((seq_len, d_state));
+            let mut d_delta = Array2::<f32>::zeros((seq_len, d_model));
 
-        let mut d_delta_raw = Array2::<f32>::zeros((seq_len, 1));
-        for t in 0..seq_len {
-            for i in 0..d_model {
-                let dpre = d_delta[(t, i)] * sigmoid(cb.pre_dt[(t, i)]);
-                total.dt_proj_b[i] += dpre;
-                total.dt_proj_w[(0, i)] += dpre * cb.delta_raw[(t, 0)];
-                d_delta_raw[(t, 0)] += dpre * layer.dt_proj_w[(0, i)];
+            let scan = if d_state.is_multiple_of(LANES) {
+                ssm_scan_backward_simd(
+                    cb.bs.view(),
+                    cb.cs.view(),
+                    cb.delta.view(),
+                    cb.x_conv.view(),
+                    cache.a.view(),
+                    layer.d_skip.view(),
+                    cb.h_traj.view(),
+                    dy_pre.view(),
+                )
+            } else {
+                ssm_scan_backward_scalar(
+                    cb.bs.view(),
+                    cb.cs.view(),
+                    cb.delta.view(),
+                    cb.x_conv.view(),
+                    cache.a.view(),
+                    layer.d_skip.view(),
+                    cb.h_traj.view(),
+                    dy_pre.view(),
+                )
+            };
+            local.a_log += &scan.grad_a_log;
+            local.d_skip += &scan.grad_d_skip;
+            d_bs.assign(&scan.d_bs);
+            d_cs.assign(&scan.d_cs);
+            d_delta.assign(&scan.d_delta);
+            dx_conv.assign(&scan.dx_conv);
+
+            let mut d_delta_raw = Array2::<f32>::zeros((seq_len, 1));
+            for t in 0..seq_len {
+                for i in 0..d_model {
+                    let dpre = d_delta[(t, i)] * sigmoid(cb.pre_dt[(t, i)]);
+                    local.dt_proj_b[i] += dpre;
+                    local.dt_proj_w[(0, i)] += dpre * cb.delta_raw[(t, 0)];
+                    d_delta_raw[(t, 0)] += dpre * layer.dt_proj_w[(0, i)];
+                }
             }
-        }
 
-        let mut d_xz = Array2::<f32>::zeros((seq_len, 2 * d_state + 1));
-        for t in 0..seq_len {
-            for s_idx in 0..d_state {
-                d_xz[(t, s_idx)] = d_bs[(t, s_idx)];
-                d_xz[(t, d_state + s_idx)] = d_cs[(t, s_idx)];
+            let mut d_xz = Array2::<f32>::zeros((seq_len, 2 * d_state + 1));
+            for t in 0..seq_len {
+                for s_idx in 0..d_state {
+                    d_xz[(t, s_idx)] = d_bs[(t, s_idx)];
+                    d_xz[(t, d_state + s_idx)] = d_cs[(t, s_idx)];
+                }
+                d_xz[(t, 2 * d_state)] = d_delta_raw[(t, 0)];
             }
-            d_xz[(t, 2 * d_state)] = d_delta_raw[(t, 0)];
-        }
-        total.x_proj_w += &cb.x_conv.t().dot(&d_xz);
-        dx_conv += &d_xz.dot(&layer.x_proj_w.t());
+            local.x_proj_w += &cb.x_conv.t().dot(&d_xz);
+            dx_conv += &d_xz.dot(&layer.x_proj_w.t());
 
-        let mut d_pre_silu = Array2::<f32>::zeros((seq_len, d_model));
-        for t in 0..seq_len {
-            for d in 0..d_model {
-                d_pre_silu[(t, d)] = dx_conv[(t, d)] * silu_grad(cb.pre_silu[(t, d)]);
+            let mut d_pre_silu = Array2::<f32>::zeros((seq_len, d_model));
+            for t in 0..seq_len {
+                for d in 0..d_model {
+                    d_pre_silu[(t, d)] = dx_conv[(t, d)] * silu_grad(cb.pre_silu[(t, d)]);
+                }
             }
-        }
 
-        let x_in_b = cache.x_in.slice(s![b, .., ..]);
-        let mut dx_in_b = Array2::<f32>::zeros((seq_len, d_model));
-        for t in 0..seq_len {
-            for d in 0..d_model {
-                let dp = d_pre_silu[(t, d)];
-                total.conv1d_b[d] += dp;
-                for k in 0..d_conv {
-                    let xk = (t + k) as isize - (d_conv as isize - 1);
-                    if xk >= 0 {
-                        let xi = xk as usize;
-                        total.conv1d_w[(d, k)] += dp * x_in_b[(xi, d)];
-                        dx_in_b[(xi, d)] += dp * layer.conv1d_w[(d, k)];
+            let x_in_b = cache.x_in.slice(s![b, .., ..]);
+            let mut dx_in_b = Array2::<f32>::zeros((seq_len, d_model));
+            for t in 0..seq_len {
+                for d in 0..d_model {
+                    let dp = d_pre_silu[(t, d)];
+                    local.conv1d_b[d] += dp;
+                    for k in 0..d_conv {
+                        let xk = (t + k) as isize - (d_conv as isize - 1);
+                        if xk >= 0 {
+                            let xi = xk as usize;
+                            local.conv1d_w[(d, k)] += dp * x_in_b[(xi, d)];
+                            dx_in_b[(xi, d)] += dp * layer.conv1d_w[(d, k)];
+                        }
                     }
                 }
             }
-        }
+
+            (b, dx_in_b, local)
+        })
+        .collect::<Vec<_>>();
+
+    for (b, dx_in_b, grads) in per_batch {
         dx_in.slice_mut(s![b, .., ..]).assign(&dx_in_b);
+        total.add_assign(&grads);
     }
 
     (dx_in, total)

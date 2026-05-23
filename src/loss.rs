@@ -1,8 +1,11 @@
 use ndarray::Array1;
 use serde::{Deserialize, Serialize};
+use crate::simd_ops::fast_exp_scalar;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GradientSurgeryMethod {
+    #[serde(rename = "none")]
+    None,
     #[serde(rename = "pcgrad")]
     PcGrad,
     #[serde(rename = "gradnorm")]
@@ -24,7 +27,7 @@ pub struct GradientSurgeryConfig {
 impl Default for GradientSurgeryConfig {
     fn default() -> Self {
         Self {
-            method: GradientSurgeryMethod::PcGrad,
+            method: GradientSurgeryMethod::OrthoGrad,
             epsilon: 1e-8,
             gradnorm_alpha: 0.2,
             cagrad_lambda: 1.0,
@@ -70,7 +73,7 @@ pub fn gradnorm_ff_scale(
         })
         .sum::<f32>()
         .sqrt();
-    (alpha * disagreement).exp()
+    fast_exp_scalar(alpha * disagreement)
 }
 
 /// Full orthogonalization of FF gradients against BP gradients.

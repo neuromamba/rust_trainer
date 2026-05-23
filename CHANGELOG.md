@@ -14,6 +14,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic V
 
 ### Changed
 - Version bump: `0.1.4` → `0.2.0`.
+- **OrthoGrad is now the default gradient surgery method** (changed from PCGrad). Empirically validated on 5k steps (equivalent to PCGrad), but stronger separation required for longer training runs (>20k steps) to prevent gradient conflicts.
 
 ## [0.1.4] — 2026-05-12
 

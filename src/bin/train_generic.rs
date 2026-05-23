@@ -561,6 +561,7 @@ fn parse_args() -> Args {
 
 fn parse_surgery_method(raw: &str) -> GradientSurgeryMethod {
     match raw.to_ascii_lowercase().as_str() {
+        "none" => GradientSurgeryMethod::None,
         "pcgrad" => GradientSurgeryMethod::PcGrad,
         "orthograd" => GradientSurgeryMethod::OrthoGrad,
         "gradnorm" => GradientSurgeryMethod::GradNorm,
@@ -830,7 +831,9 @@ fn main() {
                 let elapsed_s = train_start.elapsed().as_secs_f64().max(1e-9);
                 let sps = stats.step as f64 / elapsed_s;
                 let tok_s = sps * (args.batch_size * args.seq_len) as f64;
-                let learn = if stats.ff_updates_applied > 0 || stats.bp_updates_applied > 0 {
+                let learn = if !stats.skipped_update
+                    && (stats.ff_updates_applied > 0 || stats.bp_updates_applied > 0)
+                {
                     "yes"
                 } else {
                     "no"
